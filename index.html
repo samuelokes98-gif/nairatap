@@ -136,7 +136,7 @@
   .nav-item.active .ic{color:var(--gold-deep);}
 
   .empty{ text-align:center; padding:36px 10px; color:#B4AEC4; font-size:12.5px; }
-  .config-warning{ background:#FDF0F0; border:1px solid #F3C9C2; color:var(--red); border-radius:14px; padding:14px 16px; margin-bottom:16px; font-size:12px; line-height:1.6; word-break:break-word; }
+  .config-warning{ background:#FDF0F0; border:1px solid #F3C9C2; color:var(--red); border-radius:14px; padding:14px 16px; margin-bottom:16px; font-size:12px; line-height:1.6; }
 
   .admin-badge{ display:inline-block; font-size:10px; font-weight:700; background:var(--ink); color:var(--gold); padding:3px 9px; border-radius:100px; margin-bottom:14px; }
   .day-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:8px;}
@@ -197,9 +197,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
-</div>
-
-<script>
+</div><script>
 /* ============================================================
    1) PASTE YOUR SUPABASE CREDENTIALS HERE
    Supabase dashboard → Project Settings → API
@@ -210,11 +208,11 @@ const SUPABASE_ANON_KEY = "sb_publishable_f6cdkcX-pZyewZj2fXxEjQ_FDbC0zA5";
 const CONFIGURED = !SUPABASE_URL.includes("YOUR_") && !SUPABASE_ANON_KEY.includes("YOUR_");
 const sb = CONFIGURED ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const USERNAME = "walthj66"; // swap this per logged-in user once you add real login
+const USERNAME = "walthj66";
 const WD_OPEN_HOUR = 9;
 const WD_CLOSE_HOUR = 16;
 const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const ADMIN_PIN = "2580"; // demo gate only — replace with real auth before launch
+const ADMIN_PIN = "2580";
 const TASKS_REQUIRED_FOR_REFERRAL = 3;
 
 let state = { balance: 0, referral_count: 0, approved_task_count: 0, locked: false, withdrawals: [] };
@@ -227,7 +225,6 @@ let activeTab = 'home';
 function fmtNaira(n){ return '₦' + Number(n||0).toLocaleString('en-NG', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
-/* ---------- data layer (Supabase) ---------- */
 let lastError = null;
 
 async function loadAll(){
@@ -300,4 +297,485 @@ function showToast(msg){
 
 function withdrawWindowOpen(){
   const now = new Date();
-  const dayOk = settings.wit
+  const dayOk = settings.withdrawal_days.includes(now.getDay());
+  const hourOk = now.getHours() >= WD_OPEN_HOUR && now.getHours() < WD_CLOSE_HOUR;
+  return dayOk && hourOk;
+}
+function windowStatusText(){
+  const now = new Date();
+  if(!settings.withdrawal_days.includes(now.getDay())) return `Closed today · not a withdrawal day`;
+  if(now.getHours() < WD_OPEN_HOUR) return `Opens today at 9:00 AM`;
+  if(now.getHours() >= WD_CLOSE_HOUR) return `Closed for today · reopens next withdrawal day at 9:00 AM`;
+  return `Withdrawals open · closes 4:00 PM`;
+}
+
+function submissionFor(taskId){
+  const mine = submissions.filter(s => s.username === USERNAME && s.task_id === taskId);
+  return mine.length ? mine[0] : null;
+}
+
+async function startTask(taskId){
+  const task = tasks.find(t=>t.id===taskId);
+  if(!task) return;
+  await sb.from('submissions').insert({ id: uid(), username: USERNAME, task_id: taskId, task_name: task.name, reward: task.reward, status:'pending' });
+  await refreshSubmissions();
+  render();
+  showToast('Submitted — waiting for admin approval');
+}
+
+function copyReferral(){
+  navigator.clipboard?.writeText(`nairatap.ng/r/${USERNAME}`).catch(()=>{});
+  showToast('Referral link copied');
+}
+
+async function submitWithdrawal(e){
+  e.preventDefault();
+  if(state.locked){ showToast('Your withdrawal access is locked'); return; }
+  const amt = Number(document.getElementById('wdAmount').value);
+  const method = document.getElementById('wdMethod').value;
+  const acct = document.getElementById('wdAccount').value.trim();
+  if(!withdrawWindowOpen()){ showToast('Withdrawals are closed right now'); return; }
+  if(!amt || amt < settings.min_withdrawal){ showToast(`Minimum withdrawal is ${fmtNaira(settings.min_withdrawal)}`); return; }
+  if(amt > state.balance){ showToast('Amount exceeds your balance'); return; }
+  if(!acct){ showToast('Enter your account / PalmPay number'); return; }
+
+  const fee = Math.round(amt * settings.fee_percent) / 100;
+  const net = amt - fee;
+
+  await sb.from('withdrawals').insert({ id: uid(), username: USERNAME, amount: amt, fee, net, method, account: acct, status:'pending' });
+  await sb.from('app_users').update({ balance: state.balance - amt }).eq('username', USERNAME);
+  await refreshUserState();
+  await refreshWithdrawals();
+  render();
+  showToast('Withdrawal request submitted');
+}
+
+function updateFeePreview(){
+  const amtEl = document.getElementById('wdAmount');
+  const box = document.getElementById('feeBox');
+  if(!amtEl || !box) return;
+  const amt = Number(amtEl.value) || 0;
+  const fee = Math.round(amt * settings.fee_percent) / 100;
+  const net = amt - fee;
+  box.innerHTML = `
+    <div class="fee-row"><span>Withdrawal amount</span><span>${fmtNaira(amt)}</span></div>
+    <div class="fee-row"><span>Service fee (${settings.fee_percent}%)</span><span>-${fmtNaira(fee)}</span></div>
+    <div class="fee-row total"><span>You receive</span><span>${fmtNaira(net)}</span></div>
+  `;
+}
+
+function render(){
+  document.querySelectorAll('.nav-item').forEach(n=> n.classList.toggle('active', n.dataset.tab === activeTab));
+  const el = document.getElementById('screen');
+
+  if(!CONFIGURED){
+    el.innerHTML = `<div class="config-warning"><b>Not connected yet.</b><br>Open this file, find SUPABASE_URL and SUPABASE_ANON_KEY near the top of the script, and paste in your project's values from Supabase → Project Settings → API. Nothing will save until that's done.</div>`;
+    return;
+  }
+  if(lastError){
+    el.innerHTML = `<div class="config-warning"><b>Connection error:</b><br>${lastError}</div>`;
+    return;
+  }
+
+  if(activeTab === 'home') el.innerHTML = renderHome();
+  if(activeTab === 'refer') el.innerHTML = renderRefer();
+  if(activeTab === 'withdraw') el.innerHTML = renderWithdraw();
+  if(activeTab === 'profile') el.innerHTML = renderProfile();
+  bindScreenEvents();
+}
+
+function renderHome(){
+  const open = withdrawWindowOpen();
+  const locked = state.locked;
+
+  const taskRows = tasks.length ? tasks.map(t=>{
+    const sub = submissionFor(t.id);
+    let btnLabel = 'Start', cls = '', disabled = '';
+    if(sub){
+      if(sub.status === 'pending'){ btnLabel = 'Pending review'; cls='pending'; disabled='disabled'; }
+      else if(sub.status === 'approved'){ btnLabel = '✓ Done'; cls='done'; disabled='disabled'; }
+      else if(sub.status === 'rejected'){ btnLabel = 'Rejected · Retry'; cls='rejected'; }
+    }
+    return `
+      <div class="task-item">
+        <div class="task-icon">${t.icon || '📝'}</div>
+        <div class="task-body">
+          <div class="task-name">${t.name}</div>
+          <div class="task-reward">+${fmtNaira(t.reward)}</div>
+        </div>
+        <button class="task-btn ${cls}" data-task="${t.id}" ${disabled}>${btnLabel}</button>
+      </div>`;
+  }).join('') : `<div class="empty">No tasks available right now — check back soon.</div>`;
+
+  return `
+    <div class="balance-card">
+      <div class="balance-label">💰 Total balance</div>
+      <div class="balance-amt">${fmtNaira(state.balance)}</div>
+      <div class="balance-sub">Payouts are reviewed and paid manually · ${settings.fee_percent}% withdrawal fee applies</div>
+      <div class="status-badge">
+        <span class="dot ${locked ? 'locked' : (open?'open':'closed')}"></span>
+        ${locked ? '🔒 Withdrawals locked on this account' : windowStatusText()}
+      </div>
+    </div>
+
+    <div class="quick-grid">
+      <div class="quick-card" data-goto="withdraw">
+        <div class="quick-icon" style="background:#FBF0DA;">💳</div>
+        <div class="quick-title">Withdraw</div>
+        <div class="quick-sub">Cash to bank / PalmPay</div>
+      </div>
+      <div class="quick-card" data-goto="refer">
+        <div class="quick-icon" style="background:#F3EFFB;">👥</div>
+        <div class="quick-title">Refer & earn</div>
+        <div class="quick-sub">${fmtNaira(settings.referral_bonus)} per referral</div>
+      </div>
+    </div>
+
+    <div class="sec-title">Tasks <span class="tag">Set by admin</span></div>
+    ${taskRows}
+  `;
+}
+
+function renderRefer(){
+  const count = state.approved_task_count || 0;
+  const unlocked = count >= TASKS_REQUIRED_FOR_REFERRAL;
+  const pct = Math.min(100, Math.round((count / TASKS_REQUIRED_FOR_REFERRAL) * 100));
+
+  const gate = unlocked ? `<div class="unlocked-banner">✅ Referral earning is active on your account</div>` : `
+    <div class="lock-banner">
+      <div class="lt">🔒 Referral earning is locked</div>
+      <div class="ls">Complete ${TASKS_REQUIRED_FOR_REFERRAL} admin-approved tasks to start earning from referrals. You've completed ${count}/${TASKS_REQUIRED_FOR_REFERRAL}.</div>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+    </div>`;
+
+  return `
+    ${gate}
+    <div class="refer-card">
+      <h3>Invite friends, earn ${fmtNaira(settings.referral_bonus)}</h3>
+      <p>Share your link. Once your account is unlocked, each qualifying referral pays out.</p>
+      <div class="code-box">
+        <span class="code">nairatap.ng/r/${USERNAME}</span>
+        <button class="copy-btn" id="copyBtn">Copy</button>
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-num">${state.referral_count}</div><div class="stat-lbl">Total referrals</div></div>
+      <div class="stat-box"><div class="stat-num">${fmtNaira(state.referral_count * settings.referral_bonus)}</div><div class="stat-lbl">Earned from refs</div></div>
+    </div>function renderWithdraw(){
+  const locked = state.locked;
+  const open = withdrawWindowOpen();
+  const usable = open && !locked;
+
+  const historyRows = state.withdrawals.length ? state.withdrawals.map(w => `
+    <div class="history-item">
+      <div>
+        <div class="hist-amt">${fmtNaira(w.net ?? w.amount)}</div>
+        <div class="hist-meta">${w.method} · fee ${fmtNaira(w.fee || 0)} · ${new Date(w.created_at).toLocaleDateString('en-NG',{day:'numeric',month:'short'})}</div>
+      </div>
+      <span class="pill ${w.status}">${w.status === 'pending' ? 'Pending' : 'Paid'}</span>
+    </div>
+  `).join('') : `<div class="empty">No withdrawals yet</div>`;
+
+  const statusCard = locked ? `
+    <div class="window-card locked">
+      <div class="window-title">🔒 Withdrawals locked</div>
+      <div class="window-sub">This account has been restricted from withdrawing by an admin. Contact support if you think this is a mistake.</div>
+    </div>` : `
+    <div class="window-card ${open?'open':'closed'}">
+      <div class="window-title">${open ? '🟢' : '🔴'} ${open ? 'Withdrawals are open' : 'Withdrawals are closed'}</div>
+      <div class="window-sub">Withdrawal days: ${settings.withdrawal_days.map(d=>DAY_LABELS[d]).join(', ')} · 9:00 AM – 4:00 PM. A ${settings.fee_percent}% service fee applies. Requests are reviewed and paid manually.</div>
+    </div>`;
+
+  return `
+    ${statusCard}
+    <div class="balance-card" style="padding:16px 18px;">
+      <div class="balance-label">Available to withdraw</div>
+      <div class="balance-amt" style="font-size:26px;">${fmtNaira(state.balance)}</div>
+    </div>
+    <form id="wdForm">
+      <div class="field-label">Amount (min ${fmtNaira(settings.min_withdrawal)})</div>
+      <input class="field" id="wdAmount" type="number" min="${settings.min_withdrawal}" placeholder="e.g. 2000" ${usable?'':'disabled'}>
+      <div id="feeBox" class="fee-breakdown">
+        <div class="fee-row"><span>Withdrawal amount</span><span>₦0.00</span></div>
+        <div class="fee-row"><span>Service fee (${settings.fee_percent}%)</span><span>-₦0.00</span></div>
+        <div class="fee-row total"><span>You receive</span><span>₦0.00</span></div>
+      </div>
+      <div class="field-label">Payout method</div>
+      <select class="field" id="wdMethod" ${usable?'':'disabled'}>
+        <option>PalmPay</option><option>Bank transfer</option><option>Opay</option>
+      </select>
+      <div class="field-label">Account / PalmPay number</div>
+      <input class="field" id="wdAccount" type="text" placeholder="e.g. 08012345678" ${usable?'':'disabled'}>
+      <button class="primary-btn" type="submit" ${usable?'':'disabled'}>
+        ${locked ? 'Withdrawals locked' : (open ? 'Request withdrawal' : 'Withdrawals closed')}
+      </button>
+    </form>
+    <div class="sec-title">History</div>
+    ${historyRows}
+  `;
+}
+
+function renderProfile(){
+  return `
+    <div class="profile-head">
+      <div class="avatar">${USERNAME.charAt(0).toUpperCase()}</div>
+      <div><div class="prof-name">${USERNAME}</div><div class="prof-sub">NairaTap member</div></div>
+    </div>
+    <div class="sec-title">Account</div>
+    <div class="list-item"><div class="li-left">📄 Withdrawal history</div>›</div>
+    <div class="list-item"><div class="li-left">🏦 Payout details</div>›</div>
+    <div class="list-item"><div class="li-left">🔒 Security</div>›</div>
+    <div class="sec-title">Support</div>
+    <div class="list-item" id="openCommunity"><div class="li-left">💬 Join our community</div>›</div>
+    <div class="list-item"><div class="li-left">❓ Help center</div>›</div>
+    <div class="list-item"><div class="li-left">📤 Share app</div>›</div>
+    <div class="sec-title">Team</div>
+    <div class="list-item" id="openAdmin"><div class="li-left">🛠️ Admin panel</div>›</div>
+  `;
+}
+
+function bindScreenEvents(){
+  document.querySelectorAll('[data-task]').forEach(b=> b.addEventListener('click', ()=> startTask(b.dataset.task)));
+  document.querySelectorAll('[data-goto]').forEach(c=> c.addEventListener('click', ()=>{ activeTab = c.dataset.goto; render(); }));
+  const copyBtn = document.getElementById('copyBtn'); if(copyBtn) copyBtn.addEventListener('click', copyReferral);
+  const wdForm = document.getElementById('wdForm'); if(wdForm) wdForm.addEventListener('submit', submitWithdrawal);
+  const wdAmount = document.getElementById('wdAmount'); if(wdAmount) wdAmount.addEventListener('input', updateFeePreview);
+  const commBtn = document.getElementById('openCommunity'); if(commBtn) commBtn.addEventListener('click', openCommunityModal);
+  const adminBtn = document.getElementById('openAdmin'); if(adminBtn) adminBtn.addEventListener('click', openAdminGate);
+}
+
+function openCommunityModal(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-icon">🛡️</div>
+      <h3>Join our community</h3>
+      <p>Get updates, task alerts, and support from the NairaTap team.</p>
+      <div class="modal-btns">
+        <button class="modal-btn tg">✈️ Telegram</button>
+        <button class="modal-btn wa">💬 WhatsApp</button>
+        <button class="modal-btn close">Close</button>
+      </div>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+  modal.querySelector('.close').addEventListener('click', ()=>modal.remove());
+}
+
+function openAdminGate(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-icon">🔑</div>
+      <h3>Admin access</h3>
+      <p>Enter the admin PIN to manage app settings.</p>
+      <input class="field" id="adminPin" type="password" placeholder="PIN" style="text-align:center; letter-spacing:4px;">
+      <div class="modal-btns" style="margin-top:16px;">
+        <button class="modal-btn tg" id="adminGo">Continue</button>
+        <button class="modal-btn close" id="adminCancel">Cancel</button>
+      </div>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+  modal.querySelector('#adminCancel').addEventListener('click', ()=>modal.remove());
+  modal.querySelector('#adminGo').addEventListener('click', ()=>{
+    const pin = modal.querySelector('#adminPin').value;
+    if(pin === ADMIN_PIN && settings.admins.includes(USERNAME)){ modal.remove(); openAdminPanel(); }
+    else showToast('Incorrect PIN or not an admin');
+  });
+}
+
+function renderApprovalRows(){
+  const pending = submissions.filter(s=>s.status==='pending');
+  if(!pending.length) return `<div class="empty">No pending approvals</div>`;
+  return pending.map(s=>`
+    <div class="approval-row">
+      <div class="approval-top">
+        <div><div class="approval-user">${s.username}</div><div class="approval-task">${s.task_name} · +${fmtNaira(s.reward)}</div></div>
+      </div>
+      <div class="approval-btns">
+        <button class="approve-btn" data-approve="${s.id}">Approve</button>
+        <button class="reject-btn" data-reject="${s.id}">Reject</button>
+      </div>
+    </div>`).join('');
+}
+
+async function refreshApprovalsBox(modal){
+  await refreshSubmissions();
+  modal.querySelector('#approvalsBox').innerHTML = renderApprovalRows();
+  bindApprovalEvents(modal);
+}
+
+function bindApprovalEvents(modal){
+  modal.querySelectorAll('[data-approve]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const sub = submissions.find(s=>s.id===btn.dataset.approve);
+      if(!sub) return;
+      await sb.from('submissions').update({ status:'approved' }).eq('id', sub.id);
+      const { data: u } = await sb.from('app_users').select('*').eq('username', sub.username).maybeSingle();
+      if(u){
+        await sb.from('app_users').update({ balance: u.balance + sub.reward, approved_task_count: u.approved_task_count + 1 }).eq('username', sub.username);
+      }
+      if(sub.username === USERNAME) await refreshUserState();
+      showToast(`Approved ${sub.task_name} for ${sub.username}`);
+      await refreshApprovalsBox(modal);
+      await refreshUsers();
+      render();
+    });
+  });
+  modal.querySelectorAll('[data-reject]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const sub = submissions.find(s=>s.id===btn.dataset.reject);
+      if(!sub) return;
+      await sb.from('submissions').update({ status:'rejected' }).eq('id', sub.id);
+      showToast(`Rejected ${sub.task_name} for ${sub.username}`);
+      await refreshApprovalsBox(modal);
+    });
+  });
+}
+
+function renderTaskManageRows(){
+  if(!tasks.length) return `<div class="empty">No tasks yet — add one below</div>`;
+  return tasks.map(t=>`
+    <div class="task-manage-row">
+      <div class="tmr-left">
+        <div class="tmr-icon">${t.icon || '📝'}</div>
+        <div><div class="tmr-name">${t.name}</div><div class="tmr-reward">+${fmtNaira(t.reward)}</div></div>
+      </div>
+      <button class="remove-btn" data-remove-task="${t.id}">✕</button>
+    </div>`).join('');
+}
+
+function renderUserRows(){
+  if(!allUsers.length) return `<div class="empty">No users yet</div>`;
+  return allUsers.map(u=>`
+    <div class="user-row">
+      <div><div class="user-name">${u.username}</div><div class="user-tag">${u.locked ? '🔒 Withdrawal locked' : 'Active'}</div></div>
+      <button class="toggle-btn ${u.locked?'unlock':'lock'}" data-lock-user="${u.username}" data-locked="${u.locked}">${u.locked ? 'Unlock' : 'Flag & lock'}</button>
+    </div>`).join('');
+}
+
+function bindUserRowEvents(modal){
+  modal.querySelectorAll('[data-lock-user]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const uname = btn.dataset.lockUser;
+      const isLocked = btn.dataset.locked === 'true';
+      await sb.from('app_users').update({ locked: !isLocked }).eq('username', uname);
+      await refreshUsers();
+      modal.querySelector('#userListBox').innerHTML = renderUserRows();
+      bindUserRowEvents(modal);
+      showToast(!isLocked ? `${uname} locked from withdrawing` : `${uname} unlocked`);
+      if(uname === USERNAME){ await refreshUserState(); render(); }
+    });
+  });
+}
+
+function bindRemoveTaskEvents(modal){
+  modal.querySelectorAll('[data-remove-task]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await sb.from('tasks').delete().eq('id', btn.dataset.removeTask);
+      await refreshTasks();
+      modal.querySelector('#taskListBox').innerHTML = renderTaskManageRows();
+      bindRemoveTaskEvents(modal);
+      showToast('Task removed');
+      render();
+    });function openAdminPanel(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal wide">
+      <span class="admin-badge">ADMIN PANEL</span>
+      <h3 style="text-align:left;">Pending task approvals</h3>
+      <div id="approvalsBox">${renderApprovalRows()}</div>
+
+      <div class="sec-title">Manage tasks</div>
+      <div id="taskListBox">${renderTaskManageRows()}</div>
+      <div class="add-task-grid">
+        <input class="field" id="newTaskIcon" type="text" placeholder="📝" maxlength="2">
+        <input class="field" id="newTaskName" type="text" placeholder="Task name">
+        <input class="field" id="newTaskReward" type="number" placeholder="₦">
+      </div>
+      <button class="secondary-btn" id="addTaskBtn">+ Add task</button>
+
+      <div class="sec-title" style="margin-top:24px;">App settings</div>
+      <div class="field-label">Referral bonus (₦)</div>
+      <input class="field" id="setReferral" type="number" value="${settings.referral_bonus}">
+      <div class="field-label">Minimum withdrawal (₦)</div>
+      <input class="field" id="setMin" type="number" value="${settings.min_withdrawal}">
+      <div class="field-label">Withdrawal fee (%)</div>
+      <input class="field" id="setFee" type="number" value="${settings.fee_percent}">
+      <div class="field-label">Withdrawal days</div>
+      <div class="day-grid" id="dayGrid">
+        ${DAY_LABELS.map((d,i)=>`<div class="day-chip ${settings.withdrawal_days.includes(i)?'on':''}" data-day="${i}">${d}</div>`).join('')}
+      </div>
+      <button class="primary-btn" id="saveSettingsBtn">Save settings</button>
+
+      <div class="sec-title" style="margin-top:24px;">Admins</div>
+      <div id="adminListBox">${settings.admins.map(a=>`<span class="admin-list-tag">👤 ${a}</span>`).join('')}</div>
+      <div class="admin-row">
+        <input class="field" id="newAdminName" type="text" placeholder="Username to add as admin">
+        <button class="copy-btn" id="addAdminBtn" style="padding:12px 16px;">Add</button>
+      </div>
+
+      <div class="sec-title" style="margin-top:24px;">Manage users</div>
+      <div id="userListBox">${renderUserRows()}</div>
+
+      <button class="secondary-btn" id="adminCloseBtn">Close</button>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+
+  bindApprovalEvents(modal);
+  bindUserRowEvents(modal);
+  bindRemoveTaskEvents(modal);
+
+  modal.querySelector('#addTaskBtn').addEventListener('click', async ()=>{
+    const icon = modal.querySelector('#newTaskIcon').value.trim() || '📝';
+    const name = modal.querySelector('#newTaskName').value.trim();
+    const reward = Number(modal.querySelector('#newTaskReward').value);
+    if(!name || !reward){ showToast('Enter a task name and reward'); return; }
+    await sb.from('tasks').insert({ id: uid(), icon, name, reward });
+    await refreshTasks();
+    modal.querySelector('#taskListBox').innerHTML = renderTaskManageRows();
+    bindRemoveTaskEvents(modal);
+    modal.querySelector('#newTaskName').value=''; modal.querySelector('#newTaskReward').value=''; modal.querySelector('#newTaskIcon').value='';
+    showToast('Task added');
+    render();
+  });
+
+  modal.querySelectorAll('.day-chip').forEach(chip=> chip.addEventListener('click', ()=> chip.classList.toggle('on')));
+
+  modal.querySelector('#saveSettingsBtn').addEventListener('click', async ()=>{
+    const referral_bonus = Number(modal.querySelector('#setReferral').value) || settings.referral_bonus;
+    const min_withdrawal = Number(modal.querySelector('#setMin').value) || settings.min_withdrawal;
+    const fee_percent = Number(modal.querySelector('#setFee').value);
+    const withdrawal_days = [...modal.querySelectorAll('.day-chip.on')].map(c=>Number(c.dataset.day));
+    await sb.from('app_settings').update({ referral_bonus, min_withdrawal, fee_percent, withdrawal_days }).eq('id', 1);
+    settings = {...settings, referral_bonus, min_withdrawal, fee_percent, withdrawal_days};
+    showToast('Settings updated');
+    modal.remove();
+    render();
+  });
+
+  modal.querySelector('#addAdminBtn').addEventListener('click', async ()=>{
+    const name = modal.querySelector('#newAdminName').value.trim();
+    if(!name) return;
+    if(!settings.admins.includes(name)) settings.admins.push(name);
+    await sb.from('app_settings').update({ admins: settings.admins }).eq('id', 1);
+    modal.querySelector('#adminListBox').innerHTML = settings.admins.map(a=>`<span class="admin-list-tag">👤 ${a}</span>`).join('');
+    modal.querySelector('#newAdminName').value = '';
+    showToast(`${name} added as admin`);
+  });
+
+  modal.querySelector('#adminCloseBtn').addEventListener('click', ()=>modal.remove());
+}
+
+document.querySelectorAll('.nav-item').forEach(n=> n.addEventListener('click', ()=>{ activeTab = n.dataset.tab; render(); }));
+
+loadAll();
+</script>
+</body>
+</html>
+  });
+  }
+  `;
+}
