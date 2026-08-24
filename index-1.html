@@ -1,0 +1,1143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>NairaTap</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root{
+    --ink:#1B1440; --ink-soft:#332B63; --gold:#E8A73A; --gold-deep:#C4841E;
+    --cream:#FAF7F0; --card:#FFFFFF; --green:#1E8E5A; --red:#C1442C; --line:#EDE7DA;
+    --shadow: 0 8px 24px -8px rgba(27,20,64,0.18);
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
+  body{ font-family:'Inter',sans-serif; background:var(--ink); color:var(--ink); display:flex; justify-content:center; min-height:100vh; }
+  #app{ width:100%; max-width:430px; min-height:100vh; background:var(--cream); position:relative; display:flex; flex-direction:column; overflow:hidden; }
+
+  .topbar{ background:var(--ink); color:var(--cream); padding:18px 20px 16px; display:flex; align-items:center; justify-content:space-between; }
+  .brand{display:flex; align-items:center; gap:9px;}
+  .brand-mark{ width:32px; height:32px; border-radius:9px; background:linear-gradient(135deg, var(--gold), var(--gold-deep)); display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk'; font-weight:700; color:var(--ink); font-size:16px; }
+  .brand-name{font-family:'Space Grotesk'; font-weight:700; font-size:17px; letter-spacing:-0.2px;}
+  .hello{font-size:11.5px; color:#B9B2E0; margin-top:1px;}
+  .bell{ width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.08); display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer; }
+
+  .screen{ flex:1; overflow-y:auto; padding:18px 18px 100px; }
+  .screen::-webkit-scrollbar{display:none;}
+
+  .balance-card{ background:linear-gradient(160deg, var(--ink) 0%, var(--ink-soft) 100%); border-radius:20px; padding:22px 22px 20px; color:var(--cream); position:relative; overflow:hidden; margin-bottom:18px; box-shadow:var(--shadow); }
+  .balance-card::after{ content:''; position:absolute; right:-40px; top:-40px; width:140px; height:140px; border-radius:50%; background:radial-gradient(circle, rgba(232,167,58,0.25), transparent 70%); }
+  .balance-label{font-size:12px; color:#B9B2E0; display:flex; align-items:center; gap:6px;}
+  .balance-amt{ font-family:'Space Grotesk'; font-weight:700; font-size:38px; margin-top:6px; letter-spacing:-0.5px; }
+  .balance-sub{font-size:11.5px; color:#9C93C9; margin-top:4px;}
+  .status-badge{ display:inline-flex; align-items:center; gap:6px; margin-top:14px; padding:6px 12px; border-radius:100px; font-size:11.5px; font-weight:600; background:rgba(255,255,255,0.08); }
+  .dot{width:7px; height:7px; border-radius:50%;}
+  .dot.open{background:#4ADE80; box-shadow:0 0 8px #4ADE80;}
+  .dot.closed{background:#F87171;}
+  .dot.locked{background:#F87171;}
+
+  .sec-title{ font-family:'Space Grotesk'; font-weight:600; font-size:14.5px; color:var(--ink); margin:22px 0 10px; display:flex; justify-content:space-between; align-items:center; }
+  .sec-title span.tag{font-family:'Inter'; font-weight:600; font-size:11px; color:var(--gold-deep); background:#FBF0DA; padding:3px 9px; border-radius:100px;}
+
+  .quick-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .quick-card{ background:var(--card); border-radius:16px; padding:16px; box-shadow:var(--shadow); cursor:pointer; border:1px solid var(--line); }
+  .quick-icon{ width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:17px; margin-bottom:10px; }
+  .quick-title{font-weight:700; font-size:14px; color:var(--ink);}
+  .quick-sub{font-size:11.5px; color:#8A8299; margin-top:2px;}
+
+  .task-item{ background:var(--card); border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:12px; margin-bottom:10px; border:1px solid var(--line); }
+  .task-icon{ width:40px; height:40px; border-radius:12px; flex-shrink:0; background:#F3EFFB; display:flex; align-items:center; justify-content:center; font-size:17px; }
+  .task-body{flex:1; min-width:0;}
+  .task-name{font-weight:600; font-size:13.5px; color:var(--ink);}
+  .task-reward{font-size:11.5px; color:var(--green); font-weight:600; margin-top:2px;}
+  .task-btn{ padding:8px 14px; border-radius:100px; border:none; font-weight:700; font-size:12px; cursor:pointer; background:var(--gold); color:var(--ink); white-space:nowrap; }
+  .task-btn.done{background:#E9F7EF; color:var(--green);}
+  .task-btn.pending{background:#FBF0DA; color:var(--gold-deep);}
+  .task-btn.rejected{background:#FDF0F0; color:var(--red);}
+  .task-btn:disabled{cursor:default;}
+
+  .refer-card{ background:linear-gradient(135deg, var(--gold), var(--gold-deep)); border-radius:20px; padding:22px; color:var(--ink); margin-bottom:16px; }
+  .refer-card h3{font-family:'Space Grotesk'; font-size:19px; margin-bottom:6px;}
+  .refer-card p{font-size:12.5px; color:#4A3A12; line-height:1.5;}
+  .code-box{ margin-top:16px; background:rgba(255,255,255,0.55); border-radius:12px; padding:12px 14px; display:flex; align-items:center; justify-content:space-between; }
+  .code-box .code{font-family:'Space Grotesk'; font-weight:700; font-size:16px; letter-spacing:1px;}
+  .copy-btn{ background:var(--ink); color:var(--cream); border:none; padding:8px 14px; border-radius:100px; font-size:11.5px; font-weight:700; cursor:pointer; }
+  .stat-row{display:flex; gap:10px; margin-top:16px;}
+  .stat-box{ flex:1; background:var(--card); border-radius:14px; padding:14px; text-align:center; border:1px solid var(--line); }
+  .stat-num{font-family:'Space Grotesk'; font-weight:700; font-size:20px; color:var(--ink);}
+  .stat-lbl{font-size:10.5px; color:#8A8299; margin-top:2px;}
+
+  .lock-banner{ border-radius:16px; padding:16px; margin-bottom:16px; border:1px solid #F3C9C2; background:#FDF0F0; }
+  .lock-banner .lt{font-weight:700; font-size:13.5px; display:flex; align-items:center; gap:8px; color:var(--red);}
+  .lock-banner .ls{font-size:11.5px; color:#75708A; margin-top:5px; line-height:1.5;}
+  .progress-track{ height:8px; border-radius:100px; background:#F3E5E3; margin-top:10px; overflow:hidden; }
+  .progress-fill{ height:100%; background:var(--red); border-radius:100px; }
+  .unlocked-banner{ border-radius:16px; padding:14px 16px; margin-bottom:16px; border:1px solid #CDEFDD; background:#F0FBF5; font-size:12.5px; font-weight:600; color:var(--green); display:flex; align-items:center; gap:8px; }
+
+  .window-card{ border-radius:16px; padding:16px; margin-bottom:16px; border:1px solid var(--line); background:var(--card); }
+  .window-card.open{background:#F0FBF5; border-color:#CDEFDD;}
+  .window-card.closed{background:#FDF2F0; border-color:#F6D9D2;}
+  .window-card.locked{background:#FDF0F0; border-color:#F3C9C2;}
+  .window-title{font-weight:700; font-size:13.5px; display:flex; align-items:center; gap:8px;}
+  .window-sub{font-size:11.5px; color:#75708A; margin-top:5px; line-height:1.5;}
+
+  .field-label{font-size:12px; font-weight:600; color:var(--ink-soft); margin:14px 0 6px;}
+  .field{ width:100%; padding:13px 14px; border-radius:12px; border:1.5px solid var(--line); font-size:14px; font-family:'Inter'; background:var(--card); color:var(--ink); }
+  .field:focus{outline:none; border-color:var(--gold-deep);}
+  select.field{appearance:none;}
+
+  .fee-breakdown{ background:#F8F5EC; border-radius:12px; padding:12px 14px; margin-top:14px; font-size:12px; color:var(--ink-soft); }
+  .fee-row{display:flex; justify-content:space-between; padding:3px 0;}
+  .fee-row.total{font-weight:700; color:var(--ink); border-top:1px dashed var(--line); margin-top:5px; padding-top:7px;}
+
+  .primary-btn{ width:100%; padding:15px; border-radius:14px; border:none; background:var(--ink); color:var(--cream); font-weight:700; font-size:14.5px; margin-top:18px; cursor:pointer; font-family:'Inter'; }
+  .primary-btn:disabled{background:#D9D4E8; color:#9C93C9; cursor:not-allowed;}
+  .secondary-btn{ width:100%; padding:13px; border-radius:12px; border:1.5px solid var(--line); background:var(--card); color:var(--ink); font-weight:700; font-size:13px; margin-top:10px; cursor:pointer; }
+
+  .history-item{ display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid var(--line); }
+  .history-item:last-child{border-bottom:none;}
+  .hist-amt{font-weight:700; font-size:14px;}
+  .hist-meta{font-size:11px; color:#8A8299; margin-top:2px;}
+  .pill{font-size:10px; font-weight:700; padding:4px 9px; border-radius:100px;}
+  .pill.pending{background:#FBF0DA; color:var(--gold-deep);}
+  .pill.paid{background:#E9F7EF; color:var(--green);}
+  .pill.approved{background:#E9F7EF; color:var(--green);}
+  .pill.rejected{background:#FDF0F0; color:var(--red);}
+
+  .profile-head{display:flex; align-items:center; gap:14px; padding:6px 0 20px;}
+  .avatar{ width:58px; height:58px; border-radius:16px; background:linear-gradient(135deg, var(--ink), var(--ink-soft)); display:flex; align-items:center; justify-content:center; color:var(--gold); font-family:'Space Grotesk'; font-weight:700; font-size:22px; }
+  .prof-name{font-family:'Space Grotesk'; font-weight:700; font-size:17px; color:var(--ink);}
+  .prof-sub{font-size:12px; color:#8A8299; margin-top:2px;}
+  .list-item{ display:flex; align-items:center; justify-content:space-between; padding:15px 4px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .list-item:last-child{border-bottom:none;}
+  .li-left{display:flex; align-items:center; gap:12px; font-weight:600; font-size:13.5px; color:var(--ink);}
+
+  .modal-backdrop{ position:absolute; inset:0; background:rgba(27,20,64,0.55); display:flex; align-items:center; justify-content:center; z-index:50; padding:24px; overflow-y:auto; }
+  .modal{ background:var(--card); border-radius:22px; padding:28px 24px; text-align:center; max-width:340px; width:100%; margin:auto; }
+  .modal.wide{max-width:380px; text-align:left;}
+  .modal-icon{ width:58px; height:58px; border-radius:50%; margin:0 auto 16px; background:#F3EFFB; display:flex; align-items:center; justify-content:center; font-size:26px; }
+  .modal h3{font-family:'Space Grotesk'; font-size:19px; margin-bottom:8px; color:var(--ink);}
+  .modal p{font-size:13px; color:#8A8299; line-height:1.5; margin-bottom:20px;}
+  .modal-btns{display:flex; flex-direction:column; gap:10px;}
+  .modal-btn{ padding:13px; border-radius:12px; border:none; font-weight:700; font-size:13.5px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .modal-btn.tg{background:var(--ink); color:#fff;}
+  .modal-btn.wa{background:#25D366; color:#fff;}
+  .modal-btn.close{background:var(--cream); color:var(--ink); border:1px solid var(--line);}
+
+  .toast{ position:absolute; bottom:96px; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:12px 20px; border-radius:100px; font-size:12.5px; font-weight:600; z-index:60; opacity:0; pointer-events:none; transition:opacity 0.25s, transform 0.25s; white-space:nowrap; box-shadow:var(--shadow); max-width:90%; text-wrap:balance; white-space:normal; }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(-6px);}
+
+  .navbar{ position:absolute; bottom:0; left:0; right:0; background:var(--card); border-top:1px solid var(--line); display:flex; padding:9px 6px 12px; box-shadow:0 -4px 16px rgba(27,20,64,0.06); }
+  .nav-item{ flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; color:#B4AEC4; font-size:10.5px; font-weight:600; padding:4px 0; }
+  .nav-item .ic{font-size:19px;}
+  .nav-item.active{color:var(--ink);}
+  .nav-item.active .ic{color:var(--gold-deep);}
+
+  .empty{ text-align:center; padding:36px 10px; color:#B4AEC4; font-size:12.5px; }
+  .config-warning{ background:#FDF0F0; border:1px solid #F3C9C2; color:var(--red); border-radius:14px; padding:14px 16px; margin-bottom:16px; font-size:12px; line-height:1.6; }
+
+  .admin-badge{ display:inline-block; font-size:10px; font-weight:700; background:var(--ink); color:var(--gold); padding:3px 9px; border-radius:100px; margin-bottom:14px; }
+  .day-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:8px;}
+  .day-chip{ padding:9px 0; text-align:center; border-radius:10px; border:1.5px solid var(--line); font-size:11px; font-weight:700; cursor:pointer; color:#B4AEC4; }
+  .day-chip.on{background:var(--ink); color:var(--gold); border-color:var(--ink);}
+  .admin-row{display:flex; gap:10px; align-items:center; margin-top:12px;}
+  .admin-row .field{flex:1;}
+  .user-row{ display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--line); }
+  .user-row:last-child{border-bottom:none;}
+  .user-name{font-weight:600; font-size:13px;}
+  .user-tag{font-size:10.5px; color:#8A8299; margin-top:2px;}
+  .toggle-btn{ padding:7px 12px; border-radius:100px; border:none; font-weight:700; font-size:11px; cursor:pointer; }
+  .toggle-btn.lock{background:#FDF0F0; color:var(--red);}
+  .toggle-btn.unlock{background:#E9F7EF; color:var(--green);}
+  .admin-list-tag{ font-size:11px; background:#F3EFFB; color:var(--ink-soft); padding:5px 10px; border-radius:100px; display:inline-flex; align-items:center; gap:6px; margin:4px 6px 0 0; }
+
+  .task-manage-row{ display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line); gap:10px; }
+  .task-manage-row:last-child{border-bottom:none;}
+  .tmr-left{display:flex; align-items:center; gap:10px; min-width:0;}
+  .tmr-icon{width:32px; height:32px; border-radius:9px; background:#F3EFFB; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0;}
+  .tmr-name{font-weight:600; font-size:12.5px;}
+  .tmr-reward{font-size:11px; color:var(--green); font-weight:600;}
+  .remove-btn{ background:#FDF0F0; color:var(--red); border:none; width:26px; height:26px; border-radius:8px; font-weight:700; cursor:pointer; flex-shrink:0; }
+  .add-task-grid{ display:grid; grid-template-columns:56px 1fr 90px; gap:8px; margin-top:10px; }
+
+  .approval-row{ padding:12px 0; border-bottom:1px solid var(--line); }
+  .approval-row:last-child{border-bottom:none;}
+  .approval-top{display:flex; justify-content:space-between; align-items:center;}
+  .approval-user{font-weight:700; font-size:13px;}
+  .approval-task{font-size:11.5px; color:#8A8299; margin-top:2px;}
+  .approval-btns{display:flex; gap:8px; margin-top:9px;}
+  .approve-btn, .reject-btn{ flex:1; padding:9px; border-radius:10px; border:none; font-weight:700; font-size:12px; cursor:pointer; }
+  .approve-btn{background:var(--green); color:#fff;}
+  .reject-btn{background:#FDF0F0; color:var(--red);}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">N</div>
+      <div>
+        <div class="brand-name">NairaTap</div>
+        <div class="hello" id="helloLine">Hello, walthj66</div>
+      </div>
+    </div>
+    <div class="bell">🔔</div>
+  </div>
+
+  <div class="screen" id="screen"><div class="empty">Loading…</div></div>
+
+  <div class="navbar">
+    <div class="nav-item" data-tab="home"><span class="ic">🏠</span>Home</div>
+    <div class="nav-item" data-tab="refer"><span class="ic">👥</span>Refer</div>
+    <div class="nav-item" data-tab="withdraw"><span class="ic">💳</span>Withdraw</div>
+    <div class="nav-item" data-tab="profile"><span class="ic">👤</span>Profile</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ============================================================
+   1) PASTE YOUR SUPABASE CREDENTIALS HERE
+   Supabase dashboard → Project Settings → API
+   ============================================================ */
+const SUPABASE_URL = "https://ptpduhdjgjuhquqhmlvd.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_f6cdkcX-pZyewZj2fXxEjQ_FDbC0zA5";
+
+const CONFIGURED = !SUPABASE_URL.includes("YOUR_") && !SUPABASE_ANON_KEY.includes("YOUR_");
+const sb = CONFIGURED ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+let USERNAME = localStorage.getItem('nairatap_username') || null;
+const WD_OPEN_HOUR = 9;
+const WD_CLOSE_HOUR = 16;
+const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const ADMIN_PIN = "2580"; // demo gate only — replace with real auth before launch
+const TASKS_REQUIRED_FOR_REFERRAL = 3;
+
+let state = { balance: 0, referral_count: 0, approved_task_count: 0, locked: false, withdrawals: [] };
+let settings = { referral_bonus:100, min_withdrawal:500, fee_percent:25, withdrawal_days:[0,1,2,3,4,5,6], admins:['walthj66'], telegram_link:'', whatsapp_link:'', support_contact:'' };
+let tasks = [];
+let submissions = [];
+let allUsers = [];
+let channels = [];
+let allWithdrawals = [];
+let activeTab = 'home';
+
+function fmtNaira(n){ return '₦' + Number(n||0).toLocaleString('en-NG', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+
+/* ---------- data layer (Supabase) ---------- */
+let lastError = null;
+
+async function hashPassword(pw){
+  const buf = new TextEncoder().encode(pw);
+  const digest = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function genUserId(){ return 'NT' + Math.floor(100000 + Math.random()*900000); }
+function genReferralCode(username){ return username.toUpperCase() + Math.floor(100 + Math.random()*900); }
+
+let authMode = 'register'; // 'register' | 'login'
+
+async function registerAccount(form){
+  const fullName = form.fullName.trim();
+  const username = form.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  const email = form.email.trim();
+  const phone = form.phone.trim();
+  const password = form.password;
+  const confirm = form.confirm;
+  const refCodeInput = form.refCode.trim().toUpperCase();
+  const agreed = form.agreed;
+
+  if(!fullName){ showToast('Enter your full name'); return; }
+  if(!username || username.length < 3){ showToast('Username must be at least 3 characters'); return; }
+  if(!password || password.length < 4){ showToast('Password must be at least 4 characters'); return; }
+  if(password !== confirm){ showToast('Passwords do not match'); return; }
+  if(!agreed){ showToast('You must agree to the Terms & Conditions'); return; }
+
+  const { data: existing } = await sb.from('app_users').select('username').eq('username', username).maybeSingle();
+  if(existing){ showToast('That username is already taken'); return; }
+
+  let referrer = null;
+  if(refCodeInput){
+    const { data: byCode } = await sb.from('app_users').select('*').eq('referral_code', refCodeInput).maybeSingle();
+    referrer = byCode || null;
+  }
+
+  const password_hash = await hashPassword(password);
+  const user_id = genUserId();
+  const referral_code = genReferralCode(username);
+
+  const { data: newUser, error } = await sb.from('app_users').insert({
+    username, full_name: fullName, email: email || null, phone: phone || null,
+    password_hash, user_id, referral_code,
+    referred_by: referrer ? referrer.username : null,
+    status: 'active', balance: 0, referral_count: 0, approved_task_count: 0, locked: false
+  }).select().single();
+
+  if(error){ showToast('Registration failed: ' + (error.message || 'try a different username')); return; }
+
+  if(referrer && referrer.approved_task_count >= TASKS_REQUIRED_FOR_REFERRAL){
+    await sb.from('app_users').update({
+      balance: referrer.balance + settings.referral_bonus,
+      referral_count: referrer.referral_count + 1
+    }).eq('username', referrer.username);
+  }
+
+  localStorage.setItem('nairatap_username', username);
+  USERNAME = username;
+  document.getElementById('helloLine').textContent = 'Hello, ' + USERNAME;
+  document.getElementById('screen').innerHTML = '<div class="empty">Loading…</div>';
+  await loadAll();
+}
+
+async function loginAccount(username, password){
+  username = username.trim().toLowerCase();
+  if(!username || !password){ showToast('Enter username and password'); return; }
+  const { data: userRow } = await sb.from('app_users').select('*').eq('username', username).maybeSingle();
+  if(!userRow){ showToast('No account found with that username'); return; }
+  const hash = await hashPassword(password);
+  if(userRow.password_hash !== hash){ showToast('Incorrect password'); return; }
+  localStorage.setItem('nairatap_username', username);
+  USERNAME = username;
+  document.getElementById('helloLine').textContent = 'Hello, ' + USERNAME;
+  document.getElementById('screen').innerHTML = '<div class="empty">Loading…</div>';
+  await loadAll();
+}
+
+function logout(){
+  localStorage.removeItem('nairatap_username');
+  USERNAME = null;
+  document.getElementById('helloLine').textContent = 'Hello';
+  renderRegister();
+}
+
+function renderRegister(){
+  const el = document.getElementById('screen');
+  if(authMode === 'login'){
+    el.innerHTML = `
+      <div class="balance-card" style="text-align:center;">
+        <div style="font-size:32px; margin-bottom:8px;">🔑</div>
+        <div style="font-family:'Space Grotesk'; font-weight:700; font-size:19px; margin-bottom:6px;">Log in</div>
+        <div class="balance-sub" style="margin-bottom:16px;">Welcome back to NairaTap</div>
+      </div>
+      <div class="field-label">Username</div>
+      <input class="field" id="loginUsername" type="text" placeholder="Your username" autocapitalize="none">
+      <div class="field-label">Password</div>
+      <input class="field" id="loginPassword" type="password" placeholder="Your password">
+      <button class="primary-btn" id="loginSubmit">Log in</button>
+      <button class="secondary-btn" id="switchToRegister">Don't have an account? Register</button>
+    `;
+    document.getElementById('loginSubmit').addEventListener('click', ()=>{
+      loginAccount(document.getElementById('loginUsername').value, document.getElementById('loginPassword').value);
+    });
+    document.getElementById('switchToRegister').addEventListener('click', ()=>{ authMode='register'; renderRegister(); });
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="balance-card" style="text-align:center;">
+      <div style="font-size:32px; margin-bottom:8px;">📝</div>
+      <div style="font-family:'Space Grotesk'; font-weight:700; font-size:19px; margin-bottom:6px;">Registration details</div>
+      <div class="balance-sub" style="margin-bottom:16px;">Create your NairaTap account</div>
+    </div>
+    <div class="field-label">Full Name</div>
+    <input class="field" id="regFullName" type="text" placeholder="e.g. Samuel Okereke">
+    <div class="field-label">Username</div>
+    <input class="field" id="regUsername" type="text" placeholder="e.g. samuel123" maxlength="20" autocapitalize="none">
+    <div class="field-label">Email Address (optional)</div>
+    <input class="field" id="regEmail" type="email" placeholder="you@email.com">
+    <div class="field-label">Phone Number (optional)</div>
+    <input class="field" id="regPhone" type="tel" placeholder="080...">
+    <div class="field-label">Password</div>
+    <input class="field" id="regPassword" type="password" placeholder="At least 4 characters">
+    <div class="field-label">Confirm Password</div>
+    <input class="field" id="regConfirm" type="password" placeholder="Re-enter password">
+    <div class="field-label">Referral Code (optional)</div>
+    <input class="field" id="regRefCode" type="text" placeholder="e.g. SAMUEL123" autocapitalize="characters">
+    <label style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:12.5px; color:var(--ink-soft);">
+      <input type="checkbox" id="regTerms" style="width:16px; height:16px;">
+      I agree to the Terms & Conditions
+    </label>
+    <button class="primary-btn" id="regSubmit">Create account</button>
+    <button class="secondary-btn" id="switchToLogin">Already have an account? Log in</button>
+  `;
+  document.getElementById('regSubmit').addEventListener('click', ()=>{
+    registerAccount({
+      fullName: document.getElementById('regFullName').value,
+      username: document.getElementById('regUsername').value,
+      email: document.getElementById('regEmail').value,
+      phone: document.getElementById('regPhone').value,
+      password: document.getElementById('regPassword').value,
+      confirm: document.getElementById('regConfirm').value,
+      refCode: document.getElementById('regRefCode').value,
+      agreed: document.getElementById('regTerms').checked
+    });
+  });
+  document.getElementById('switchToLogin').addEventListener('click', ()=>{ authMode='login'; renderRegister(); });
+}
+
+async function loadAll(){
+  if(!CONFIGURED){ render(); return; }
+  if(!USERNAME){ renderRegister(); return; }
+  try{
+    let { data: userRow, error: e1 } = await sb.from('app_users').select('*').eq('username', USERNAME).maybeSingle();
+    if(e1) throw e1;
+    if(!userRow){
+      const { data, error: e2 } = await sb.from('app_users').insert({ username: USERNAME }).select().single();
+      if(e2) throw e2;
+      userRow = data;
+    }
+    state.balance = userRow.balance; state.referral_count = userRow.referral_count;
+    state.approved_task_count = userRow.approved_task_count; state.locked = userRow.locked;
+    state.full_name = userRow.full_name; state.user_id = userRow.user_id; state.referral_code = userRow.referral_code;
+    state.created_at = userRow.created_at; state.status = userRow.status;
+
+    const { data: wd, error: e3 } = await sb.from('withdrawals').select('*').eq('username', USERNAME).order('created_at', {ascending:false});
+    if(e3) throw e3;
+    state.withdrawals = wd || [];
+
+    const { data: s, error: e4 } = await sb.from('app_settings').select('*').eq('id', 1).maybeSingle();
+    if(e4) throw e4;
+    if(s) settings = { referral_bonus:s.referral_bonus, min_withdrawal:s.min_withdrawal, fee_percent:s.fee_percent, withdrawal_days:s.withdrawal_days, admins:s.admins, telegram_link:s.telegram_link||'', whatsapp_link:s.whatsapp_link||'', support_contact:s.support_contact||'' };
+
+    const { data: t, error: e5 } = await sb.from('tasks').select('*').order('name');
+    if(e5) throw e5;
+    tasks = t || [];
+
+    const { data: subs, error: e6 } = await sb.from('submissions').select('*').order('created_at', {ascending:false});
+    if(e6) throw e6;
+    submissions = subs || [];
+
+    const { data: users, error: e7 } = await sb.from('app_users').select('*').order('username');
+    if(e7) throw e7;
+    allUsers = users || [];
+
+    const { data: ch, error: e8 } = await sb.from('channels').select('*').order('created_at');
+    if(e8) throw e8;
+    channels = ch || [];
+
+    lastError = null;
+    render();
+    if(!sessionStorage.getItem('nairatap_seen_channels') && channels.length){
+      sessionStorage.setItem('nairatap_seen_channels', '1');
+      openCommunityModal();
+    }
+  }catch(err){
+    lastError = (err && (err.message || err.error_description || JSON.stringify(err))) || 'Unknown error';
+    render();
+  }
+}
+
+async function refreshChannels(){
+  const { data } = await sb.from('channels').select('*').order('created_at');
+  channels = data || [];
+}
+async function refreshAllWithdrawals(){
+  const { data } = await sb.from('withdrawals').select('*').order('created_at', {ascending:false});
+  allWithdrawals = data || [];
+}
+
+async function refreshUserState(){
+  const { data } = await sb.from('app_users').select('*').eq('username', USERNAME).maybeSingle();
+  if(data){ state.balance=data.balance; state.referral_count=data.referral_count; state.approved_task_count=data.approved_task_count; state.locked=data.locked; }
+}
+async function refreshWithdrawals(){
+  const { data } = await sb.from('withdrawals').select('*').eq('username', USERNAME).order('created_at', {ascending:false});
+  state.withdrawals = data || [];
+}
+async function refreshSubmissions(){
+  const { data } = await sb.from('submissions').select('*').order('created_at', {ascending:false});
+  submissions = data || [];
+}
+async function refreshUsers(){
+  const { data } = await sb.from('app_users').select('*').order('username');
+  allUsers = data || [];
+}
+async function refreshTasks(){
+  const { data } = await sb.from('tasks').select('*').order('name');
+  tasks = data || [];
+}
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2400);
+}
+
+function withdrawWindowOpen(){
+  const now = new Date();
+  const dayOk = settings.withdrawal_days.includes(now.getDay());
+  const hourOk = now.getHours() >= WD_OPEN_HOUR && now.getHours() < WD_CLOSE_HOUR;
+  return dayOk && hourOk;
+}
+function windowStatusText(){
+  const now = new Date();
+  if(!settings.withdrawal_days.includes(now.getDay())) return `Closed today · not a withdrawal day`;
+  if(now.getHours() < WD_OPEN_HOUR) return `Opens today at 9:00 AM`;
+  if(now.getHours() >= WD_CLOSE_HOUR) return `Closed for today · reopens next withdrawal day at 9:00 AM`;
+  return `Withdrawals open · closes 4:00 PM`;
+}
+
+function submissionFor(taskId){
+  const mine = submissions.filter(s => s.username === USERNAME && s.task_id === taskId);
+  return mine.length ? mine[0] : null; // already ordered desc
+}
+
+function taskFillCount(taskId){
+  return submissions.filter(s => s.task_id === taskId && (s.status === 'pending' || s.status === 'approved')).length;
+}
+function taskIsFull(task){
+  return task.max_users != null && taskFillCount(task.id) >= task.max_users;
+}
+
+async function startTask(taskId){
+  const task = tasks.find(t=>t.id===taskId);
+  if(!task) return;
+  if(taskIsFull(task)){ showToast('This task is full'); return; }
+  await sb.from('submissions').insert({ id: uid(), username: USERNAME, task_id: taskId, task_name: task.name, reward: task.reward, status:'pending' });
+  await refreshSubmissions();
+  render();
+  showToast('Submitted — waiting for admin approval');
+}
+
+function copyReferral(){
+  navigator.clipboard?.writeText(`nairatap.ng/r/${USERNAME}`).catch(()=>{});
+  showToast('Referral link copied');
+}
+
+async function submitWithdrawal(e){
+  e.preventDefault();
+  if(state.locked){ showToast('Your withdrawal access is locked'); return; }
+  const amt = Number(document.getElementById('wdAmount').value);
+  const method = document.getElementById('wdMethod').value;
+  const acct = document.getElementById('wdAccount').value.trim();
+  if(!withdrawWindowOpen()){ showToast('Withdrawals are closed right now'); return; }
+  if(!amt || amt < settings.min_withdrawal){ showToast(`Minimum withdrawal is ${fmtNaira(settings.min_withdrawal)}`); return; }
+  if(amt > state.balance){ showToast('Amount exceeds your balance'); return; }
+  if(!acct){ showToast('Enter your account / PalmPay number'); return; }
+
+  const fee = Math.round(amt * settings.fee_percent) / 100;
+  const net = amt - fee;
+
+  await sb.from('withdrawals').insert({ id: uid(), username: USERNAME, amount: amt, fee, net, method, account: acct, status:'pending' });
+  await sb.from('app_users').update({ balance: state.balance - amt }).eq('username', USERNAME);
+  await refreshUserState();
+  await refreshWithdrawals();
+  render();
+  showToast('Withdrawal request submitted');
+}
+
+function updateFeePreview(){
+  const amtEl = document.getElementById('wdAmount');
+  const box = document.getElementById('feeBox');
+  if(!amtEl || !box) return;
+  const amt = Number(amtEl.value) || 0;
+  const fee = Math.round(amt * settings.fee_percent) / 100;
+  const net = amt - fee;
+  box.innerHTML = `
+    <div class="fee-row"><span>Withdrawal amount</span><span>${fmtNaira(amt)}</span></div>
+    <div class="fee-row"><span>Service fee (${settings.fee_percent}%)</span><span>-${fmtNaira(fee)}</span></div>
+    <div class="fee-row total"><span>You receive</span><span>${fmtNaira(net)}</span></div>
+  `;
+}
+
+/* ---------- render ---------- */
+function render(){
+  document.querySelectorAll('.nav-item').forEach(n=> n.classList.toggle('active', n.dataset.tab === activeTab));
+  const el = document.getElementById('screen');
+
+  if(!CONFIGURED){
+    el.innerHTML = `<div class="config-warning"><b>Not connected yet.</b><br>Open this file, find SUPABASE_URL and SUPABASE_ANON_KEY near the top of the script, and paste in your project's values from Supabase → Project Settings → API. Nothing will save until that's done.</div>`;
+    return;
+  }
+  if(lastError){
+    el.innerHTML = `<div class="config-warning"><b>Connection error:</b><br>${lastError}</div>`;
+    return;
+  }
+
+  if(activeTab === 'home') el.innerHTML = renderHome();
+  if(activeTab === 'refer') el.innerHTML = renderRefer();
+  if(activeTab === 'withdraw') el.innerHTML = renderWithdraw();
+  if(activeTab === 'profile') el.innerHTML = renderProfile();
+  bindScreenEvents();
+}
+
+function renderHome(){
+  const open = withdrawWindowOpen();
+  const locked = state.locked;
+
+  const taskRows = tasks.length ? tasks.map(t=>{
+    const sub = submissionFor(t.id);
+    let btnLabel = 'Start', cls = '', disabled = '';
+    if(sub){
+      if(sub.status === 'pending'){ btnLabel = 'Pending review'; cls='pending'; disabled='disabled'; }
+      else if(sub.status === 'approved'){ btnLabel = '✓ Done'; cls='done'; disabled='disabled'; }
+      else if(sub.status === 'rejected'){ btnLabel = 'Rejected · Retry'; cls='rejected'; }
+    }
+    const full = taskIsFull(t);
+    if(!sub && full){ btnLabel = 'Full'; disabled = 'disabled'; }
+    const slots = t.max_users != null ? `<div class="task-reward" style="color:#8A8299;">${taskFillCount(t.id)}/${t.max_users} spots filled</div>` : '';
+    return `
+      <div class="task-item">
+        <div class="task-icon">${t.icon || '📝'}</div>
+        <div class="task-body">
+          <div class="task-name">${t.name}</div>
+          <div class="task-reward">+${fmtNaira(t.reward)}</div>
+          ${slots}
+        </div>
+        <button class="task-btn ${cls}" data-task="${t.id}" ${disabled}>${btnLabel}</button>
+      </div>`;
+  }).join('') : `<div class="empty">No tasks available right now — check back soon.</div>`;
+
+  return `
+    <div class="balance-card">
+      <div class="balance-label">💰 Total balance</div>
+      <div class="balance-amt">${fmtNaira(state.balance)}</div>
+      <div class="balance-sub">Payouts are reviewed and paid manually · ${settings.fee_percent}% withdrawal fee applies</div>
+      <div class="status-badge">
+        <span class="dot ${locked ? 'locked' : (open?'open':'closed')}"></span>
+        ${locked ? '🔒 Withdrawals locked on this account' : windowStatusText()}
+      </div>
+    </div>
+
+    <div class="quick-grid">
+      <div class="quick-card" data-goto="withdraw">
+        <div class="quick-icon" style="background:#FBF0DA;">💳</div>
+        <div class="quick-title">Withdraw</div>
+        <div class="quick-sub">Cash to bank / PalmPay</div>
+      </div>
+      <div class="quick-card" data-goto="refer">
+        <div class="quick-icon" style="background:#F3EFFB;">👥</div>
+        <div class="quick-title">Refer & earn</div>
+        <div class="quick-sub">${fmtNaira(settings.referral_bonus)} per referral</div>
+      </div>
+    </div>
+
+    <div class="sec-title">Tasks <span class="tag">Set by admin</span></div>
+    ${taskRows}
+  `;
+}
+
+function renderRefer(){
+  const count = state.approved_task_count || 0;
+  const unlocked = count >= TASKS_REQUIRED_FOR_REFERRAL;
+  const pct = Math.min(100, Math.round((count / TASKS_REQUIRED_FOR_REFERRAL) * 100));
+
+  const gate = unlocked ? `<div class="unlocked-banner">✅ Referral earning is active on your account</div>` : `
+    <div class="lock-banner">
+      <div class="lt">🔒 Referral earning is locked</div>
+      <div class="ls">Complete ${TASKS_REQUIRED_FOR_REFERRAL} admin-approved tasks to start earning from referrals. You've completed ${count}/${TASKS_REQUIRED_FOR_REFERRAL}.</div>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+    </div>`;
+
+  return `
+    ${gate}
+    <div class="refer-card">
+      <h3>Invite friends, earn ${fmtNaira(settings.referral_bonus)}</h3>
+      <p>Share your link. Once your account is unlocked, each qualifying referral pays out.</p>
+      <div class="code-box">
+        <span class="code">nairatap.ng/r/${USERNAME}</span>
+        <button class="copy-btn" id="copyBtn">Copy</button>
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-num">${state.referral_count}</div><div class="stat-lbl">Total referrals</div></div>
+      <div class="stat-box"><div class="stat-num">${fmtNaira(state.referral_count * settings.referral_bonus)}</div><div class="stat-lbl">Earned from refs</div></div>
+    </div>
+  `;
+}
+
+function renderWithdraw(){
+  const locked = state.locked;
+  const open = withdrawWindowOpen();
+  const usable = open && !locked;
+
+  const historyRows = state.withdrawals.length ? state.withdrawals.map(w => `
+    <div class="history-item">
+      <div>
+        <div class="hist-amt">${fmtNaira(w.net ?? w.amount)}</div>
+        <div class="hist-meta">${w.method} · fee ${fmtNaira(w.fee || 0)} · ${new Date(w.created_at).toLocaleDateString('en-NG',{day:'numeric',month:'short'})}</div>
+      </div>
+      <span class="pill ${w.status}">${w.status === 'pending' ? 'Pending' : 'Paid'}</span>
+    </div>
+  `).join('') : `<div class="empty">No withdrawals yet</div>`;
+
+  const statusCard = locked ? `
+    <div class="window-card locked">
+      <div class="window-title">🔒 Withdrawals locked</div>
+      <div class="window-sub">This account has been restricted from withdrawing by an admin. Contact support if you think this is a mistake.</div>
+    </div>` : `
+    <div class="window-card ${open?'open':'closed'}">
+      <div class="window-title">${open ? '🟢' : '🔴'} ${open ? 'Withdrawals are open' : 'Withdrawals are closed'}</div>
+      <div class="window-sub">Withdrawal days: ${settings.withdrawal_days.map(d=>DAY_LABELS[d]).join(', ')} · 9:00 AM – 4:00 PM. A ${settings.fee_percent}% service fee applies. Requests are reviewed and paid manually.</div>
+    </div>`;
+
+  return `
+    ${statusCard}
+    <div class="balance-card" style="padding:16px 18px;">
+      <div class="balance-label">Available to withdraw</div>
+      <div class="balance-amt" style="font-size:26px;">${fmtNaira(state.balance)}</div>
+    </div>
+    <form id="wdForm">
+      <div class="field-label">Amount (min ${fmtNaira(settings.min_withdrawal)})</div>
+      <input class="field" id="wdAmount" type="number" min="${settings.min_withdrawal}" placeholder="e.g. 2000" ${usable?'':'disabled'}>
+      <div id="feeBox" class="fee-breakdown">
+        <div class="fee-row"><span>Withdrawal amount</span><span>₦0.00</span></div>
+        <div class="fee-row"><span>Service fee (${settings.fee_percent}%)</span><span>-₦0.00</span></div>
+        <div class="fee-row total"><span>You receive</span><span>₦0.00</span></div>
+      </div>
+      <div class="field-label">Payout method</div>
+      <select class="field" id="wdMethod" ${usable?'':'disabled'}>
+        <option>PalmPay</option><option>Bank transfer</option><option>Opay</option>
+      </select>
+      <div class="field-label">Account / PalmPay number</div>
+      <input class="field" id="wdAccount" type="text" placeholder="e.g. 08012345678" ${usable?'':'disabled'}>
+      <button class="primary-btn" type="submit" ${usable?'':'disabled'}>
+        ${locked ? 'Withdrawals locked' : (open ? 'Request withdrawal' : 'Withdrawals closed')}
+      </button>
+    </form>
+    <div class="sec-title">History</div>
+    ${historyRows}
+  `;
+}
+
+function renderProfile(){
+  return `
+    <div class="profile-head">
+      <div class="avatar">${USERNAME.charAt(0).toUpperCase()}</div>
+      <div><div class="prof-name">${state.full_name || USERNAME}</div><div class="prof-sub">@${USERNAME} · ${state.user_id || ''}</div></div>
+    </div>
+    <div class="sec-title">Account</div>
+    <div class="list-item"><div class="li-left">📄 Withdrawal history</div>›</div>
+    <div class="list-item"><div class="li-left">🏦 Payout details</div>›</div>
+    <div class="list-item"><div class="li-left">🔒 Security</div>›</div>
+    <div class="sec-title">Support</div>
+    <div class="list-item" id="openCommunity"><div class="li-left">💬 Join our community</div>›</div>
+    <div class="list-item" id="openSupport"><div class="li-left">❓ Help center</div>›</div>
+    <div class="list-item"><div class="li-left">📤 Share app</div>›</div>
+    <div class="sec-title">Team</div>
+    <div class="list-item" id="openAdmin"><div class="li-left">🛠️ Admin panel</div>›</div>
+    <div class="sec-title">‎</div>
+    <div class="list-item" id="logoutBtn"><div class="li-left" style="color:var(--red);">🚪 Logout</div>›</div>
+  `;
+}
+
+function bindScreenEvents(){
+  document.querySelectorAll('[data-task]').forEach(b=> b.addEventListener('click', ()=> startTask(b.dataset.task)));
+  document.querySelectorAll('[data-goto]').forEach(c=> c.addEventListener('click', ()=>{ activeTab = c.dataset.goto; render(); }));
+  const copyBtn = document.getElementById('copyBtn'); if(copyBtn) copyBtn.addEventListener('click', copyReferral);
+  const wdForm = document.getElementById('wdForm'); if(wdForm) wdForm.addEventListener('submit', submitWithdrawal);
+  const wdAmount = document.getElementById('wdAmount'); if(wdAmount) wdAmount.addEventListener('input', updateFeePreview);
+  const commBtn = document.getElementById('openCommunity'); if(commBtn) commBtn.addEventListener('click', openCommunityModal);
+  const suppBtn = document.getElementById('openSupport'); if(suppBtn) suppBtn.addEventListener('click', openSupportModal);
+  const adminBtn = document.getElementById('openAdmin'); if(adminBtn) adminBtn.addEventListener('click', openAdminGate);
+  const logoutBtn = document.getElementById('logoutBtn'); if(logoutBtn) logoutBtn.addEventListener('click', logout);
+}
+
+function openCommunityModal(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  const btns = channels.length
+    ? channels.map(c => `<button class="modal-btn tg" data-channel="${c.link}">📢 ${c.name}</button>`).join('')
+    : `<div class="empty">No official channels set up yet</div>`;
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-icon">🛡️</div>
+      <h3>Join our community</h3>
+      <p>Get updates, task alerts, and support from the NairaTap team.</p>
+      <div class="modal-btns">
+        ${btns}
+        <button class="modal-btn close">Close</button>
+      </div>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+  modal.querySelectorAll('[data-channel]').forEach(b=> b.addEventListener('click', ()=> window.open(b.dataset.channel, '_blank')));
+  modal.querySelector('.close').addEventListener('click', ()=>modal.remove());
+}
+
+function openSupportModal(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  const contact = settings.support_contact;
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-icon">🎧</div>
+      <h3>Help center</h3>
+      <p>${contact ? 'Reach the NairaTap support team directly.' : 'Support contact has not been set up yet.'}</p>
+      <div class="modal-btns">
+        ${contact ? `<button class="modal-btn tg" id="supportBtn">💬 Contact support</button>` : ''}
+        <button class="modal-btn close">Close</button>
+      </div>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+  const sBtn = modal.querySelector('#supportBtn'); if(sBtn) sBtn.addEventListener('click', ()=> window.open(contact, '_blank'));
+  modal.querySelector('.close').addEventListener('click', ()=>modal.remove());
+}
+
+function openAdminGate(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-icon">🔑</div>
+      <h3>Admin access</h3>
+      <p>Enter the admin PIN to manage app settings.</p>
+      <input class="field" id="adminPin" type="password" placeholder="PIN" style="text-align:center; letter-spacing:4px;">
+      <div class="modal-btns" style="margin-top:16px;">
+        <button class="modal-btn tg" id="adminGo">Continue</button>
+        <button class="modal-btn close" id="adminCancel">Cancel</button>
+      </div>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+  modal.querySelector('#adminCancel').addEventListener('click', ()=>modal.remove());
+  modal.querySelector('#adminGo').addEventListener('click', ()=>{
+    const pin = modal.querySelector('#adminPin').value;
+    if(pin === ADMIN_PIN && settings.admins.includes(USERNAME)){ modal.remove(); openAdminPanel(); }
+    else showToast('Incorrect PIN or not an admin');
+  });
+}
+
+function renderApprovalRows(){
+  const pending = submissions.filter(s=>s.status==='pending');
+  if(!pending.length) return `<div class="empty">No pending approvals</div>`;
+  return pending.map(s=>`
+    <div class="approval-row">
+      <div class="approval-top">
+        <div><div class="approval-user">${s.username}</div><div class="approval-task">${s.task_name} · +${fmtNaira(s.reward)}</div></div>
+      </div>
+      <div class="approval-btns">
+        <button class="approve-btn" data-approve="${s.id}">Approve</button>
+        <button class="reject-btn" data-reject="${s.id}">Reject</button>
+      </div>
+    </div>`).join('');
+}
+
+async function refreshApprovalsBox(modal){
+  await refreshSubmissions();
+  modal.querySelector('#approvalsBox').innerHTML = renderApprovalRows();
+  bindApprovalEvents(modal);
+}
+
+function bindApprovalEvents(modal){
+  modal.querySelectorAll('[data-approve]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const sub = submissions.find(s=>s.id===btn.dataset.approve);
+      if(!sub) return;
+      await sb.from('submissions').update({ status:'approved' }).eq('id', sub.id);
+      const { data: u } = await sb.from('app_users').select('*').eq('username', sub.username).maybeSingle();
+      if(u){
+        await sb.from('app_users').update({ balance: u.balance + sub.reward, approved_task_count: u.approved_task_count + 1 }).eq('username', sub.username);
+      }
+      if(sub.username === USERNAME) await refreshUserState();
+      showToast(`Approved ${sub.task_name} for ${sub.username}`);
+      await refreshApprovalsBox(modal);
+      await refreshUsers();
+      render();
+    });
+  });
+  modal.querySelectorAll('[data-reject]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const sub = submissions.find(s=>s.id===btn.dataset.reject);
+      if(!sub) return;
+      await sb.from('submissions').update({ status:'rejected' }).eq('id', sub.id);
+      showToast(`Rejected ${sub.task_name} for ${sub.username}`);
+      await refreshApprovalsBox(modal);
+    });
+  });
+}
+
+function renderTaskManageRows(){
+  if(!tasks.length) return `<div class="empty">No tasks yet — add one below</div>`;
+  return tasks.map(t=>`
+    <div class="task-manage-row">
+      <div class="tmr-left">
+        <div class="tmr-icon">${t.icon || '📝'}</div>
+        <div><div class="tmr-name">${t.name}</div><div class="tmr-reward">+${fmtNaira(t.reward)}${t.max_users!=null ? ` · ${taskFillCount(t.id)}/${t.max_users} slots` : ' · unlimited'}</div></div>
+      </div>
+      <button class="remove-btn" data-remove-task="${t.id}">✕</button>
+    </div>`).join('');
+}
+
+function renderUserRows(){
+  if(!allUsers.length) return `<div class="empty">No users yet</div>`;
+  return allUsers.map(u=>`
+    <div class="user-row">
+      <div><div class="user-name">${u.username}</div><div class="user-tag">${u.locked ? '🔒 Withdrawal locked' : 'Active'}</div></div>
+      <button class="toggle-btn ${u.locked?'unlock':'lock'}" data-lock-user="${u.username}" data-locked="${u.locked}">${u.locked ? 'Unlock' : 'Flag & lock'}</button>
+    </div>`).join('');
+}
+
+function bindUserRowEvents(modal){
+  modal.querySelectorAll('[data-lock-user]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const uname = btn.dataset.lockUser;
+      const isLocked = btn.dataset.locked === 'true';
+      await sb.from('app_users').update({ locked: !isLocked }).eq('username', uname);
+      await refreshUsers();
+      modal.querySelector('#userListBox').innerHTML = renderUserRows();
+      bindUserRowEvents(modal);
+      showToast(!isLocked ? `${uname} locked from withdrawing` : `${uname} unlocked`);
+      if(uname === USERNAME){ await refreshUserState(); render(); }
+    });
+  });
+}
+
+function bindRemoveTaskEvents(modal){
+  modal.querySelectorAll('[data-remove-task]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await sb.from('tasks').delete().eq('id', btn.dataset.removeTask);
+      await refreshTasks();
+      modal.querySelector('#taskListBox').innerHTML = renderTaskManageRows();
+      bindRemoveTaskEvents(modal);
+      showToast('Task removed');
+      render();
+    });
+  });
+}
+
+function renderAdminWithdrawalRows(){
+  const pending = allWithdrawals.filter(w=>w.status==='pending');
+  if(!pending.length) return `<div class="empty">No pending withdrawal requests</div>`;
+  return pending.map(w=>`
+    <div class="approval-row">
+      <div class="approval-top">
+        <div>
+          <div class="approval-user">${w.username} — ${fmtNaira(w.net ?? w.amount)}</div>
+          <div class="approval-task">${w.method} · ${w.account} · fee ${fmtNaira(w.fee||0)}</div>
+        </div>
+      </div>
+      <div class="approval-btns">
+        <button class="approve-btn" data-wd-approve="${w.id}">Confirm</button>
+        <button class="reject-btn" data-wd-cancel="${w.id}" data-wd-user="${w.username}" data-wd-amount="${w.amount}">Cancel & refund</button>
+      </div>
+    </div>`).join('');
+}
+
+async function refreshAdminWithdrawalBox(modal){
+  await refreshAllWithdrawals();
+  modal.querySelector('#adminWdBox').innerHTML = renderAdminWithdrawalRows();
+  bindAdminWithdrawalEvents(modal);
+}
+
+function bindAdminWithdrawalEvents(modal){
+  modal.querySelectorAll('[data-wd-approve]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await sb.from('withdrawals').update({ status:'approved' }).eq('id', btn.dataset.wdApprove);
+      showToast('Withdrawal confirmed as paid');
+      await refreshAdminWithdrawalBox(modal);
+      if(allWithdrawals.some(w=>w.username===USERNAME)) await refreshWithdrawals();
+      render();
+    });
+  });
+  modal.querySelectorAll('[data-wd-cancel]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const wUser = btn.dataset.wdUser;
+      const wAmount = Number(btn.dataset.wdAmount);
+      await sb.from('withdrawals').update({ status:'rejected' }).eq('id', btn.dataset.wdCancel);
+      const { data: u } = await sb.from('app_users').select('*').eq('username', wUser).maybeSingle();
+      if(u) await sb.from('app_users').update({ balance: u.balance + wAmount }).eq('username', wUser);
+      showToast(`Cancelled — ${fmtNaira(wAmount)} refunded to ${wUser}`);
+      await refreshAdminWithdrawalBox(modal);
+      await refreshUsers();
+      if(wUser===USERNAME){ await refreshUserState(); await refreshWithdrawals(); }
+      render();
+    });
+  });
+}
+
+async function adjustBalance(modal, direction){
+  const uname = modal.querySelector('#balUsername').value.trim().toLowerCase();
+  const amt = Number(modal.querySelector('#balAmount').value);
+  if(!uname || !amt || amt <= 0){ showToast('Enter a username and a positive amount'); return; }
+  const { data: u } = await sb.from('app_users').select('*').eq('username', uname).maybeSingle();
+  if(!u){ showToast('No user found with that username'); return; }
+  const newBalance = direction === 'add' ? u.balance + amt : Math.max(0, u.balance - amt);
+  await sb.from('app_users').update({ balance: newBalance }).eq('username', uname);
+  showToast(`${direction === 'add' ? 'Added' : 'Deducted'} ${fmtNaira(amt)} ${direction==='add'?'to':'from'} ${uname}`);
+  await refreshUsers();
+  modal.querySelector('#userListBox').innerHTML = renderUserRows();
+  bindUserRowEvents(modal);
+  modal.querySelector('#balUsername').value=''; modal.querySelector('#balAmount').value='';
+  if(uname===USERNAME){ await refreshUserState(); render(); }
+}
+
+function renderChannelRows(){
+  if(!channels.length) return `<div class="empty">No official channels yet</div>`;
+  return channels.map(c=>`
+    <div class="task-manage-row">
+      <div class="tmr-left">
+        <div class="tmr-icon">📢</div>
+        <div><div class="tmr-name">${c.name}</div><div class="tmr-reward" style="color:#8A8299;">${c.link}</div></div>
+      </div>
+      <button class="remove-btn" data-remove-channel="${c.id}">✕</button>
+    </div>`).join('');
+}
+function bindRemoveChannelEvents(modal){
+  modal.querySelectorAll('[data-remove-channel]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      await sb.from('channels').delete().eq('id', btn.dataset.removeChannel);
+      await refreshChannels();
+      modal.querySelector('#channelListBox').innerHTML = renderChannelRows();
+      bindRemoveChannelEvents(modal);
+      showToast('Channel removed');
+    });
+  });
+}
+
+function openAdminPanel(){
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal wide">
+      <span class="admin-badge">ADMIN PANEL</span>
+      <h3 style="text-align:left;">Pending task approvals</h3>
+      <div id="approvalsBox">${renderApprovalRows()}</div>
+
+      <div class="sec-title" style="margin-top:24px;">Pending withdrawal requests</div>
+      <div id="adminWdBox">${renderAdminWithdrawalRows()}</div>
+
+      <div class="sec-title" style="margin-top:24px;">Adjust user balance</div>
+      <div class="field-label">Username</div>
+      <input class="field" id="balUsername" type="text" placeholder="Username" autocapitalize="none">
+      <div class="field-label">Amount (₦)</div>
+      <input class="field" id="balAmount" type="number" placeholder="e.g. 500">
+      <div class="admin-row">
+        <button class="secondary-btn" id="balAddBtn" style="margin-top:0;">+ Add funds</button>
+        <button class="secondary-btn" id="balDeductBtn" style="margin-top:0; color:var(--red);">− Deduct funds</button>
+      </div>
+
+      <div class="sec-title" style="margin-top:24px;">Manage tasks</div>
+      <div id="taskListBox">${renderTaskManageRows()}</div>
+      <div class="field-label">Task name</div>
+      <input class="field" id="newTaskName" type="text" placeholder="Task name">
+      <div class="field-label">Link (optional)</div>
+      <input class="field" id="newTaskLink" type="text" placeholder="https://...">
+      <div class="add-task-grid">
+        <input class="field" id="newTaskIcon" type="text" placeholder="📝" maxlength="2">
+        <input class="field" id="newTaskReward" type="number" placeholder="₦ reward">
+        <input class="field" id="newTaskMax" type="number" placeholder="Users needed">
+      </div>
+      <button class="secondary-btn" id="addTaskBtn">+ Add task</button>
+
+      <div class="sec-title" style="margin-top:24px;">App settings</div>
+      <div class="field-label">Referral bonus (₦)</div>
+      <input class="field" id="setReferral" type="number" value="${settings.referral_bonus}">
+      <div class="field-label">Minimum withdrawal (₦)</div>
+      <input class="field" id="setMin" type="number" value="${settings.min_withdrawal}">
+      <div class="field-label">Withdrawal fee (%)</div>
+      <input class="field" id="setFee" type="number" value="${settings.fee_percent}">
+      <div class="field-label">Withdrawal days</div>
+      <div class="day-grid" id="dayGrid">
+        ${DAY_LABELS.map((d,i)=>`<div class="day-chip ${settings.withdrawal_days.includes(i)?'on':''}" data-day="${i}">${d}</div>`).join('')}
+      </div>
+      <button class="primary-btn" id="saveSettingsBtn">Save settings</button>
+
+      <div class="sec-title" style="margin-top:24px;">Official channels</div>
+      <div id="channelListBox">${renderChannelRows()}</div>
+      <div class="admin-row">
+        <input class="field" id="newChannelName" type="text" placeholder="Channel name">
+        <input class="field" id="newChannelLink" type="text" placeholder="Link">
+      </div>
+      <button class="secondary-btn" id="addChannelBtn">+ Add channel</button>
+
+      <div class="sec-title" style="margin-top:24px;">Support contact</div>
+      <input class="field" id="setSupport" type="text" placeholder="https://wa.me/234..." value="${settings.support_contact || ''}">
+      <button class="primary-btn" id="saveCommunityBtn">Save support contact</button>
+
+      <div class="sec-title" style="margin-top:24px;">Admins</div>
+      <div id="adminListBox">${settings.admins.map(a=>`<span class="admin-list-tag">👤 ${a}</span>`).join('')}</div>
+      <div class="admin-row">
+        <input class="field" id="newAdminName" type="text" placeholder="Username to add as admin">
+        <button class="copy-btn" id="addAdminBtn" style="padding:12px 16px;">Add</button>
+      </div>
+
+      <div class="sec-title" style="margin-top:24px;">Manage users</div>
+      <div id="userListBox">${renderUserRows()}</div>
+
+      <button class="secondary-btn" id="adminCloseBtn">Close</button>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+
+  bindApprovalEvents(modal);
+  bindUserRowEvents(modal);
+  bindRemoveTaskEvents(modal);
+  bindAdminWithdrawalEvents(modal);
+  bindRemoveChannelEvents(modal);
+  refreshAdminWithdrawalBox(modal);
+
+  modal.querySelector('#balAddBtn').addEventListener('click', ()=> adjustBalance(modal, 'add'));
+  modal.querySelector('#balDeductBtn').addEventListener('click', ()=> adjustBalance(modal, 'deduct'));
+
+  modal.querySelector('#addChannelBtn').addEventListener('click', async ()=>{
+    const name = modal.querySelector('#newChannelName').value.trim();
+    const link = modal.querySelector('#newChannelLink').value.trim();
+    if(!name || !link){ showToast('Enter a channel name and link'); return; }
+    await sb.from('channels').insert({ id: uid(), name, link });
+    await refreshChannels();
+    modal.querySelector('#channelListBox').innerHTML = renderChannelRows();
+    bindRemoveChannelEvents(modal);
+    modal.querySelector('#newChannelName').value=''; modal.querySelector('#newChannelLink').value='';
+    showToast('Channel added');
+  });
+
+  modal.querySelector('#addTaskBtn').addEventListener('click', async ()=>{
+    const icon = modal.querySelector('#newTaskIcon').value.trim() || '📝';
+    const name = modal.querySelector('#newTaskName').value.trim();
+    const link = modal.querySelector('#newTaskLink').value.trim();
+    const reward = Number(modal.querySelector('#newTaskReward').value);
+    const maxVal = modal.querySelector('#newTaskMax').value.trim();
+    const max_users = maxVal ? Number(maxVal) : null;
+    if(!name || !reward){ showToast('Enter a task name and reward'); return; }
+    await sb.from('tasks').insert({ id: uid(), icon, name, reward, link: link || null, max_users });
+    await refreshTasks();
+    modal.querySelector('#taskListBox').innerHTML = renderTaskManageRows();
+    bindRemoveTaskEvents(modal);
+    modal.querySelector('#newTaskName').value=''; modal.querySelector('#newTaskReward').value=''; modal.querySelector('#newTaskIcon').value=''; modal.querySelector('#newTaskLink').value=''; modal.querySelector('#newTaskMax').value='';
+    showToast('Task added');
+    render();
+  });
+
+  modal.querySelectorAll('.day-chip').forEach(chip=> chip.addEventListener('click', ()=> chip.classList.toggle('on')));
+
+  modal.querySelector('#saveSettingsBtn').addEventListener('click', async ()=>{
+    const referral_bonus = Number(modal.querySelector('#setReferral').value) || settings.referral_bonus;
+    const min_withdrawal = Number(modal.querySelector('#setMin').value) || settings.min_withdrawal;
+    const fee_percent = Number(modal.querySelector('#setFee').value);
+    const withdrawal_days = [...modal.querySelectorAll('.day-chip.on')].map(c=>Number(c.dataset.day));
+    await sb.from('app_settings').update({ referral_bonus, min_withdrawal, fee_percent, withdrawal_days }).eq('id', 1);
+    settings = {...settings, referral_bonus, min_withdrawal, fee_percent, withdrawal_days};
+    showToast('Settings updated');
+    modal.remove();
+    render();
+  });
+
+  modal.querySelector('#saveCommunityBtn').addEventListener('click', async ()=>{
+    const support_contact = modal.querySelector('#setSupport').value.trim();
+    await sb.from('app_settings').update({ support_contact }).eq('id', 1);
+    settings = {...settings, support_contact};
+    showToast('Support contact updated');
+  });
+
+  modal.querySelector('#addAdminBtn').addEventListener('click', async ()=>{
+    const name = modal.querySelector('#newAdminName').value.trim();
+    if(!name) return;
+    if(!settings.admins.includes(name)) settings.admins.push(name);
+    await sb.from('app_settings').update({ admins: settings.admins }).eq('id', 1);
+    modal.querySelector('#adminListBox').innerHTML = settings.admins.map(a=>`<span class="admin-list-tag">👤 ${a}</span>`).join('');
+    modal.querySelector('#newAdminName').value = '';
+    showToast(`${name} added as admin`);
+  });
+
+  modal.querySelector('#adminCloseBtn').addEventListener('click', ()=>modal.remove());
+}
+
+document.querySelectorAll('.nav-item').forEach(n=> n.addEventListener('click', ()=>{ activeTab = n.dataset.tab; render(); }));
+
+loadAll();
+</script>
+</body>
+</html>
