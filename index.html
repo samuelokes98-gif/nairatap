@@ -197,7 +197,9 @@
   </div>
 
   <div class="toast" id="toast"></div>
-</div><script>
+</div>
+
+<script>
 /* ============================================================
    1) PASTE YOUR SUPABASE CREDENTIALS HERE
    Supabase dashboard → Project Settings → API
@@ -208,11 +210,11 @@ const SUPABASE_ANON_KEY = "sb_publishable_f6cdkcX-pZyewZj2fXxEjQ_FDbC0zA5";
 const CONFIGURED = !SUPABASE_URL.includes("YOUR_") && !SUPABASE_ANON_KEY.includes("YOUR_");
 const sb = CONFIGURED ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-const USERNAME = "walthj66";
+const USERNAME = "walthj66"; // swap this per logged-in user once you add real login
 const WD_OPEN_HOUR = 9;
 const WD_CLOSE_HOUR = 16;
 const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-const ADMIN_PIN = "2580";
+const ADMIN_PIN = "2580"; // demo gate only — replace with real auth before launch
 const TASKS_REQUIRED_FOR_REFERRAL = 3;
 
 let state = { balance: 0, referral_count: 0, approved_task_count: 0, locked: false, withdrawals: [] };
@@ -225,6 +227,7 @@ let activeTab = 'home';
 function fmtNaira(n){ return '₦' + Number(n||0).toLocaleString('en-NG', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
+/* ---------- data layer (Supabase) ---------- */
 let lastError = null;
 
 async function loadAll(){
@@ -311,7 +314,7 @@ function windowStatusText(){
 
 function submissionFor(taskId){
   const mine = submissions.filter(s => s.username === USERNAME && s.task_id === taskId);
-  return mine.length ? mine[0] : null;
+  return mine.length ? mine[0] : null; // already ordered desc
 }
 
 async function startTask(taskId){
@@ -364,6 +367,7 @@ function updateFeePreview(){
   `;
 }
 
+/* ---------- render ---------- */
 function render(){
   document.querySelectorAll('.nav-item').forEach(n=> n.classList.toggle('active', n.dataset.tab === activeTab));
   const el = document.getElementById('screen');
@@ -461,7 +465,11 @@ function renderRefer(){
     <div class="stat-row">
       <div class="stat-box"><div class="stat-num">${state.referral_count}</div><div class="stat-lbl">Total referrals</div></div>
       <div class="stat-box"><div class="stat-num">${fmtNaira(state.referral_count * settings.referral_bonus)}</div><div class="stat-lbl">Earned from refs</div></div>
-    </div>function renderWithdraw(){
+    </div>
+  `;
+}
+
+function renderWithdraw(){
   const locked = state.locked;
   const open = withdrawWindowOpen();
   const usable = open && !locked;
@@ -679,7 +687,11 @@ function bindRemoveTaskEvents(modal){
       bindRemoveTaskEvents(modal);
       showToast('Task removed');
       render();
-    });function openAdminPanel(){
+    });
+  });
+}
+
+function openAdminPanel(){
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.innerHTML = `
@@ -775,7 +787,3 @@ loadAll();
 </script>
 </body>
 </html>
-  });
-  }
-  `;
-}
