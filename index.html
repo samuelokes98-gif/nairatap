@@ -136,7 +136,7 @@
   .nav-item.active .ic{color:var(--gold-deep);}
 
   .empty{ text-align:center; padding:36px 10px; color:#B4AEC4; font-size:12.5px; }
-  .config-warning{ background:#FDF0F0; border:1px solid #F3C9C2; color:var(--red); border-radius:14px; padding:14px 16px; margin-bottom:16px; font-size:12px; line-height:1.6; }
+  .config-warning{ background:#FDF0F0; border:1px solid #F3C9C2; color:var(--red); border-radius:14px; padding:14px 16px; margin-bottom:16px; font-size:12px; line-height:1.6; word-break:break-word; }
 
   .admin-badge{ display:inline-block; font-size:10px; font-weight:700; background:var(--ink); color:var(--gold); padding:3px 9px; border-radius:100px; margin-bottom:14px; }
   .day-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:8px;}
@@ -228,33 +228,47 @@ function fmtNaira(n){ return '₦' + Number(n||0).toLocaleString('en-NG', {minim
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
 /* ---------- data layer (Supabase) ---------- */
+let lastError = null;
+
 async function loadAll(){
   if(!CONFIGURED){ render(); return; }
+  try{
+    let { data: userRow, error: e1 } = await sb.from('app_users').select('*').eq('username', USERNAME).maybeSingle();
+    if(e1) throw e1;
+    if(!userRow){
+      const { data, error: e2 } = await sb.from('app_users').insert({ username: USERNAME }).select().single();
+      if(e2) throw e2;
+      userRow = data;
+    }
+    state.balance = userRow.balance; state.referral_count = userRow.referral_count;
+    state.approved_task_count = userRow.approved_task_count; state.locked = userRow.locked;
 
-  let { data: userRow } = await sb.from('app_users').select('*').eq('username', USERNAME).maybeSingle();
-  if(!userRow){
-    const { data } = await sb.from('app_users').insert({ username: USERNAME }).select().single();
-    userRow = data;
+    const { data: wd, error: e3 } = await sb.from('withdrawals').select('*').eq('username', USERNAME).order('created_at', {ascending:false});
+    if(e3) throw e3;
+    state.withdrawals = wd || [];
+
+    const { data: s, error: e4 } = await sb.from('app_settings').select('*').eq('id', 1).maybeSingle();
+    if(e4) throw e4;
+    if(s) settings = { referral_bonus:s.referral_bonus, min_withdrawal:s.min_withdrawal, fee_percent:s.fee_percent, withdrawal_days:s.withdrawal_days, admins:s.admins };
+
+    const { data: t, error: e5 } = await sb.from('tasks').select('*').order('name');
+    if(e5) throw e5;
+    tasks = t || [];
+
+    const { data: subs, error: e6 } = await sb.from('submissions').select('*').order('created_at', {ascending:false});
+    if(e6) throw e6;
+    submissions = subs || [];
+
+    const { data: users, error: e7 } = await sb.from('app_users').select('*').order('username');
+    if(e7) throw e7;
+    allUsers = users || [];
+
+    lastError = null;
+    render();
+  }catch(err){
+    lastError = (err && (err.message || err.error_description || JSON.stringify(err))) || 'Unknown error';
+    render();
   }
-  state.balance = userRow.balance; state.referral_count = userRow.referral_count;
-  state.approved_task_count = userRow.approved_task_count; state.locked = userRow.locked;
-
-  const { data: wd } = await sb.from('withdrawals').select('*').eq('username', USERNAME).order('created_at', {ascending:false});
-  state.withdrawals = wd || [];
-
-  const { data: s } = await sb.from('app_settings').select('*').eq('id', 1).maybeSingle();
-  if(s) settings = { referral_bonus:s.referral_bonus, min_withdrawal:s.min_withdrawal, fee_percent:s.fee_percent, withdrawal_days:s.withdrawal_days, admins:s.admins };
-
-  const { data: t } = await sb.from('tasks').select('*').order('name');
-  tasks = t || [];
-
-  const { data: subs } = await sb.from('submissions').select('*').order('created_at', {ascending:false});
-  submissions = subs || [];
-
-  const { data: users } = await sb.from('app_users').select('*').order('username');
-  allUsers = users || [];
-
-  render();
 }
 
 async function refreshUserState(){
@@ -286,12 +300,4 @@ function showToast(msg){
 
 function withdrawWindowOpen(){
   const now = new Date();
-  const dayOk = settings.withdrawal_days.includes(now.getDay());
-  const hourOk = now.getHours() >= WD_OPEN_HOUR && now.getHours() < WD_CLOSE_HOUR;
-  return dayOk && hourOk;
-}
-function windowStatusText(){
-  const now = new Date();
-  if(!settings.withdrawal_days.includes(now.getDay())) return `Closed today · not a withdrawal day`;
-  if(now.getHours() < WD_OPEN_HOUR) return `Opens today at 9:00 AM`;
-  if(now.getHours() >= WD_CLOSE_HOUR) return `Closed for today · reopens next withdrawal day at 9:00 AM
+  const dayOk = settings.wit
