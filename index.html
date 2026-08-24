@@ -241,6 +241,7 @@ function genUserId(){ return 'NT' + Math.floor(100000 + Math.random()*900000); }
 function genReferralCode(username){ return username.toUpperCase() + Math.floor(100 + Math.random()*900); }
 
 let authMode = 'register'; // 'register' | 'login'
+const urlRefCode = new URLSearchParams(window.location.search).get('ref') || '';
 
 async function registerAccount(form){
   const fullName = form.fullName.trim();
@@ -357,7 +358,8 @@ function renderRegister(){
     <div class="field-label">Confirm Password</div>
     <input class="field" id="regConfirm" type="password" placeholder="Re-enter password">
     <div class="field-label">Referral Code (optional)</div>
-    <input class="field" id="regRefCode" type="text" placeholder="e.g. SAMUEL123" autocapitalize="characters">
+    <input class="field" id="regRefCode" type="text" placeholder="e.g. SAMUEL123" autocapitalize="characters" value="${urlRefCode}">
+    ${urlRefCode ? `<div class="unlocked-banner" style="margin-top:8px;">✅ Referral code applied automatically</div>` : ''}
     <label style="display:flex; align-items:center; gap:8px; margin-top:14px; font-size:12.5px; color:var(--ink-soft);">
       <input type="checkbox" id="regTerms" style="width:16px; height:16px;">
       I agree to the Terms & Conditions
@@ -505,7 +507,7 @@ async function startTask(taskId){
 }
 
 function copyReferral(){
-  navigator.clipboard?.writeText(`nairatap.ng/r/${USERNAME}`).catch(()=>{});
+  navigator.clipboard?.writeText(`https://nairatap.vercel.app/?ref=${state.referral_code || USERNAME}`).catch(()=>{});
   showToast('Referral link copied');
 }
 
@@ -640,8 +642,8 @@ function renderRefer(){
       <h3>Invite friends, earn ${fmtNaira(settings.referral_bonus)}</h3>
       <p>Share your link. Once your account is unlocked, each qualifying referral pays out.</p>
       <div class="code-box">
-        <span class="code">nairatap.ng/r/${USERNAME}</span>
-        <button class="copy-btn" id="copyBtn">Copy</button>
+        <span class="code">?ref=${state.referral_code || USERNAME}</span>
+        <button class="copy-btn" id="copyBtn">Copy link</button>
       </div>
     </div>
     <div class="stat-row">
