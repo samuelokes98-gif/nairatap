@@ -281,13 +281,6 @@ async function registerAccount(form){
 
   if(error){ showToast('Registration failed: ' + (error.message || 'try a different username')); return; }
 
-  if(referrer && referrer.approved_task_count >= TASKS_REQUIRED_FOR_REFERRAL){
-    await sb.from('app_users').update({
-      balance: referrer.balance + settings.referral_bonus,
-      referral_count: referrer.referral_count + 1
-    }).eq('username', referrer.username);
-  }
-
   localStorage.setItem('nairatap_username', username);
   USERNAME = username;
   document.getElementById('helloLine').textContent = 'Hello, ' + USERNAME;
@@ -492,18 +485,64 @@ function submissionFor(taskId){
 function taskFillCount(taskId){
   return submissions.filter(s => s.task_id === taskId && (s.status === 'pending' || s.status === 'approved')).length;
 }
+function myReferrals(){
+  return allUsers.filter(u => u.referred_by === USERNAME);
+}
 function taskIsFull(task){
   return task.max_users != null && taskFillCount(task.id) >= task.max_users;
 }
 
-async function startTask(taskId){
+async function submitTaskWithProof(taskId, file){
   const task = tasks.find(t=>t.id===taskId);
   if(!task) return;
   if(taskIsFull(task)){ showToast('This task is full'); return; }
-  await sb.from('submissions').insert({ id: uid(), username: USERNAME, task_id: taskId, task_name: task.name, reward: task.reward, status:'pending' });
+
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+  const path = `${USERNAME}/${taskId}-${Date.now()}.${ext}`;
+  const { error: upErr } = await sb.storage.from('task-proofs').upload(path, file);
+  if(upErr){ showToast('Upload failed: ' + upErr.message); return false; }
+  const { data: pub } = sb.storage.from('task-proofs').getPublicUrl(path);
+
+  await sb.from('submissions').insert({
+    id: uid(), username: USERNAME, task_id: taskId, task_name: task.name,
+    reward: task.reward, status:'pending', proof_url: pub.publicUrl
+  });
   await refreshSubmissions();
   render();
   showToast('Submitted — waiting for admin approval');
+  return true;
+}
+
+function openTaskModal(taskId){
+  const task = tasks.find(t=>t.id===taskId);
+  if(!task) return;
+  if(taskIsFull(task)){ showToast('This task is full'); return; }
+  if(task.link) window.open(task.link, '_blank');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `
+    <div class="modal">
+      <div class="modal-icon">📸</div>
+      <h3>${task.name}</h3>
+      <p>${task.link ? "We've opened the task link in a new tab. " : ""}Complete the task, then upload a screenshot as proof before submitting for review.</p>
+      <input class="field" id="proofFile" type="file" accept="image/*" style="margin-bottom:14px;">
+      <div class="modal-btns">
+        <button class="modal-btn tg" id="proofSubmitBtn">Submit for review</button>
+        <button class="modal-btn close">Cancel</button>
+      </div>
+    </div>`;
+  document.getElementById('app').appendChild(modal);
+  modal.querySelector('.close').addEventListener('click', ()=>modal.remove());
+  modal.querySelector('#proofSubmitBtn').addEventListener('click', async ()=>{
+    const file = modal.querySelector('#proofFile').files[0];
+    if(!file){ showToast('Please choose a screenshot first'); return; }
+    const btn = modal.querySelector('#proofSubmitBtn');
+    btn.textContent = 'Uploading…'; btn.disabled = true;
+    const ok = await submitTaskWithProof(taskId, file);
+    if(ok) modal.remove();
+    else { btn.textContent = 'Submit for review'; btn.disabled = false; }
+  });
 }
 
 function copyReferral(){
@@ -625,22 +664,25 @@ function renderHome(){
 }
 
 function renderRefer(){
-  const count = state.approved_task_count || 0;
-  const unlocked = count >= TASKS_REQUIRED_FOR_REFERRAL;
-  const pct = Math.min(100, Math.round((count / TASKS_REQUIRED_FOR_REFERRAL) * 100));
-
-  const gate = unlocked ? `<div class="unlocked-banner">✅ Referral earning is active on your account</div>` : `
-    <div class="lock-banner">
-      <div class="lt">🔒 Referral earning is locked</div>
-      <div class="ls">Complete ${TASKS_REQUIRED_FOR_REFERRAL} admin-approved tasks to start earning from referrals. You've completed ${count}/${TASKS_REQUIRED_FOR_REFERRAL}.</div>
-      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
-    </div>`;
+  const refs = myReferrals();
+  const refRows = refs.length ? refs.map(r=>{
+    const c = Math.min(r.approved_task_count || 0, TASKS_REQUIRED_FOR_REFERRAL);
+    const pct = Math.round((c / TASKS_REQUIRED_FOR_REFERRAL) * 100);
+    const done = r.referral_credited;
+    return `
+      <div class="task-item" style="flex-direction:column; align-items:stretch; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="task-name">${r.full_name || r.username}</div>
+          <span class="pill ${done ? 'approved' : 'pending'}">${done ? '✓ Commission paid' : `${c}/${TASKS_REQUIRED_FOR_REFERRAL} tasks`}</span>
+        </div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%; background:${done?'var(--green)':'var(--gold-deep)'};"></div></div>
+      </div>`;
+  }).join('') : `<div class="empty">No referrals yet — share your link to start earning</div>`;
 
   return `
-    ${gate}
     <div class="refer-card">
       <h3>Invite friends, earn ${fmtNaira(settings.referral_bonus)}</h3>
-      <p>Share your link. Once your account is unlocked, each qualifying referral pays out.</p>
+      <p>Share your link. You earn ${fmtNaira(settings.referral_bonus)} once a referral completes ${TASKS_REQUIRED_FOR_REFERRAL} admin-approved tasks.</p>
       <div class="code-box">
         <span class="code">?ref=${state.referral_code || USERNAME}</span>
         <button class="copy-btn" id="copyBtn">Copy link</button>
@@ -650,6 +692,8 @@ function renderRefer(){
       <div class="stat-box"><div class="stat-num">${state.referral_count}</div><div class="stat-lbl">Total referrals</div></div>
       <div class="stat-box"><div class="stat-num">${fmtNaira(state.referral_count * settings.referral_bonus)}</div><div class="stat-lbl">Earned from refs</div></div>
     </div>
+    <div class="sec-title">Your referrals</div>
+    ${refRows}
   `;
 }
 
@@ -729,7 +773,7 @@ function renderProfile(){
 }
 
 function bindScreenEvents(){
-  document.querySelectorAll('[data-task]').forEach(b=> b.addEventListener('click', ()=> startTask(b.dataset.task)));
+  document.querySelectorAll('[data-task]').forEach(b=> b.addEventListener('click', ()=> openTaskModal(b.dataset.task)));
   document.querySelectorAll('[data-goto]').forEach(c=> c.addEventListener('click', ()=>{ activeTab = c.dataset.goto; render(); }));
   const copyBtn = document.getElementById('copyBtn'); if(copyBtn) copyBtn.addEventListener('click', copyReferral);
   const wdForm = document.getElementById('wdForm'); if(wdForm) wdForm.addEventListener('submit', submitWithdrawal);
@@ -811,6 +855,7 @@ function renderApprovalRows(){
       <div class="approval-top">
         <div><div class="approval-user">${s.username}</div><div class="approval-task">${s.task_name} · +${fmtNaira(s.reward)}</div></div>
       </div>
+      ${s.proof_url ? `<a href="${s.proof_url}" target="_blank"><img src="${s.proof_url}" style="width:100%; border-radius:10px; margin-top:8px; display:block; max-height:180px; object-fit:cover;"></a>` : `<div class="empty" style="padding:8px 0;">No screenshot attached</div>`}
       <div class="approval-btns">
         <button class="approve-btn" data-approve="${s.id}">Approve</button>
         <button class="reject-btn" data-reject="${s.id}">Reject</button>
@@ -832,7 +877,18 @@ function bindApprovalEvents(modal){
       await sb.from('submissions').update({ status:'approved' }).eq('id', sub.id);
       const { data: u } = await sb.from('app_users').select('*').eq('username', sub.username).maybeSingle();
       if(u){
-        await sb.from('app_users').update({ balance: u.balance + sub.reward, approved_task_count: u.approved_task_count + 1 }).eq('username', sub.username);
+        const newCount = u.approved_task_count + 1;
+        await sb.from('app_users').update({ balance: u.balance + sub.reward, approved_task_count: newCount }).eq('username', sub.username);
+
+        if(u.referred_by && !u.referral_credited && newCount >= TASKS_REQUIRED_FOR_REFERRAL){
+          const { data: ref } = await sb.from('app_users').select('*').eq('username', u.referred_by).maybeSingle();
+          if(ref){
+            await sb.from('app_users').update({ balance: ref.balance + settings.referral_bonus, referral_count: ref.referral_count + 1 }).eq('username', ref.username);
+            await sb.from('app_users').update({ referral_credited: true }).eq('username', u.username);
+            showToast(`${sub.username} hit 3 tasks — ${ref.username} earned a referral bonus`);
+            if(ref.username === USERNAME) await refreshUserState();
+          }
+        }
       }
       if(sub.username === USERNAME) await refreshUserState();
       showToast(`Approved ${sub.task_name} for ${sub.username}`);
