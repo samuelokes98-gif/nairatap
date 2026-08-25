@@ -224,6 +224,7 @@ let submissions = [];
 let allUsers = [];
 let channels = [];
 let allWithdrawals = [];
+let referralRewards = [];
 let activeTab = 'home';
 
 function fmtNaira(n){ return '₦' + Number(n||0).toLocaleString('en-NG', {minimumFractionDigits:2, maximumFractionDigits:2}); }
@@ -242,6 +243,28 @@ function genReferralCode(username){ return username.toUpperCase() + Math.floor(1
 
 let authMode = 'register'; // 'register' | 'login'
 const urlRefCode = new URLSearchParams(window.location.search).get('ref') || '';
+
+async function getPublicIp(){
+  try{
+    const r = await fetch('https://api.ipify.org?format=json');
+    const j = await r.json();
+    return j.ip || null;
+  }catch(e){ return null; }
+}
+
+async function checkAndFlagSharedIp(newUsername, ip){
+  if(!ip) return;
+  const { data: sameIp } = await sb.from('app_users').select('username').eq('ip_address', ip);
+  const matches = (sameIp || []).map(u=>u.username);
+  if(matches.length >= 2){
+    for(const uname of matches){
+      await sb.from('app_users').update({ flagged: true, flag_reason: 'Suspicious — Shared IP' }).eq('username', uname);
+    }
+    await sb.from('ip_flags').insert({
+      id: uid(), ip_address: ip, usernames: matches.join(', ')
+    });
+  }
+}
 
 async function registerAccount(form){
   const fullName = form.fullName.trim();
@@ -271,15 +294,19 @@ async function registerAccount(form){
   const password_hash = await hashPassword(password);
   const user_id = genUserId();
   const referral_code = genReferralCode(username);
+  const ip = await getPublicIp();
 
   const { data: newUser, error } = await sb.from('app_users').insert({
     username, full_name: fullName, email: email || null, phone: phone || null,
     password_hash, user_id, referral_code,
     referred_by: referrer ? referrer.username : null,
-    status: 'active', balance: 0, referral_count: 0, approved_task_count: 0, locked: false
+    status: 'active', balance: 0, referral_count: 0, approved_task_count: 0, locked: false,
+    ip_address: ip
   }).select().single();
 
   if(error){ showToast('Registration failed: ' + (error.message || 'try a different username')); return; }
+
+  await checkAndFlagSharedIp(username, ip);
 
   localStorage.setItem('nairatap_username', username);
   USERNAME = username;
@@ -387,7 +414,7 @@ async function loadAll(){
       userRow = data;
     }
     state.balance = userRow.balance; state.referral_count = userRow.referral_count;
-    state.approved_task_count = userRow.approved_task_count; state.locked = userRow.locked;
+    state.approved_task_count = userRow.approved_task_count; state.locked = userRow.locked; state.flagged = userRow.flagged;
     state.full_name = userRow.full_name; state.user_id = userRow.user_id; state.referral_code = userRow.referral_code;
     state.created_at = userRow.created_at; state.status = userRow.status;
 
@@ -414,6 +441,10 @@ async function loadAll(){
     const { data: ch, error: e8 } = await sb.from('channels').select('*').order('created_at');
     if(e8) throw e8;
     channels = ch || [];
+
+    const { data: rr, error: e9 } = await sb.from('referral_rewards').select('*');
+    if(e9) throw e9;
+    referralRewards = rr || [];
 
     lastError = null;
     render();
@@ -663,26 +694,37 @@ function renderHome(){
   `;
 }
 
+function referralStatusFor(r){
+  if(r.flagged) return { label: 'Flagged', color: 'var(--red)', bg: '#FDF0F0' };
+  const reward = referralRewards.find(x => x.referred_username === r.username);
+  if(reward && reward.status === 'paid') return { label: 'Completed & Rewarded', color: 'var(--green)', bg: '#E9F7EF' };
+  if(reward && reward.status === 'held_fraud_review') return { label: 'Held — Under Review', color: 'var(--gold-deep)', bg: '#FBF0DA' };
+  const c = r.approved_task_count || 0;
+  if(c <= 0) return { label: 'Pending', color: '#8A8299', bg: '#F1EEE6' };
+  if(c < TASKS_REQUIRED_FOR_REFERRAL) return { label: `Task ${c}/${TASKS_REQUIRED_FOR_REFERRAL} completed`, color: 'var(--gold-deep)', bg: '#FBF0DA' };
+  return { label: `Task ${TASKS_REQUIRED_FOR_REFERRAL}/${TASKS_REQUIRED_FOR_REFERRAL} completed`, color: 'var(--gold-deep)', bg: '#FBF0DA' };
+}
+
 function renderRefer(){
   const refs = myReferrals();
   const refRows = refs.length ? refs.map(r=>{
     const c = Math.min(r.approved_task_count || 0, TASKS_REQUIRED_FOR_REFERRAL);
     const pct = Math.round((c / TASKS_REQUIRED_FOR_REFERRAL) * 100);
-    const done = r.referral_credited;
+    const st = referralStatusFor(r);
     return `
       <div class="task-item" style="flex-direction:column; align-items:stretch; gap:6px;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div class="task-name">${r.full_name || r.username}</div>
-          <span class="pill ${done ? 'approved' : 'pending'}">${done ? '✓ Commission paid' : `${c}/${TASKS_REQUIRED_FOR_REFERRAL} tasks`}</span>
+          <span class="pill" style="background:${st.bg}; color:${st.color};">${st.label}</span>
         </div>
-        <div class="progress-track"><div class="progress-fill" style="width:${pct}%; background:${done?'var(--green)':'var(--gold-deep)'};"></div></div>
+        <div class="progress-track"><div class="progress-fill" style="width:${pct}%; background:${st.color};"></div></div>
       </div>`;
   }).join('') : `<div class="empty">No referrals yet — share your link to start earning</div>`;
 
   return `
     <div class="refer-card">
       <h3>Invite friends, earn ${fmtNaira(settings.referral_bonus)}</h3>
-      <p>Share your link. You earn ${fmtNaira(settings.referral_bonus)} once a referral completes ${TASKS_REQUIRED_FOR_REFERRAL} admin-approved tasks.</p>
+      <p>Share your link. You earn ${fmtNaira(settings.referral_bonus)} instantly once a referral completes ${TASKS_REQUIRED_FOR_REFERRAL} admin-approved tasks.</p>
       <div class="code-box">
         <span class="code">?ref=${state.referral_code || USERNAME}</span>
         <button class="copy-btn" id="copyBtn">Copy link</button>
@@ -702,13 +744,14 @@ function renderWithdraw(){
   const open = withdrawWindowOpen();
   const usable = open && !locked;
 
+  const statusLabel = (s) => s === 'pending' ? 'Pending' : s === 'rejected' ? 'Refunded' : 'Paid';
   const historyRows = state.withdrawals.length ? state.withdrawals.map(w => `
     <div class="history-item">
       <div>
         <div class="hist-amt">${fmtNaira(w.net ?? w.amount)}</div>
         <div class="hist-meta">${w.method} · fee ${fmtNaira(w.fee || 0)} · ${new Date(w.created_at).toLocaleDateString('en-NG',{day:'numeric',month:'short'})}</div>
       </div>
-      <span class="pill ${w.status}">${w.status === 'pending' ? 'Pending' : 'Paid'}</span>
+      <span class="pill ${w.status}">${statusLabel(w.status)}</span>
     </div>
   `).join('') : `<div class="empty">No withdrawals yet</div>`;
 
@@ -880,13 +923,25 @@ function bindApprovalEvents(modal){
         const newCount = u.approved_task_count + 1;
         await sb.from('app_users').update({ balance: u.balance + sub.reward, approved_task_count: newCount }).eq('username', sub.username);
 
-        if(u.referred_by && !u.referral_credited && newCount >= TASKS_REQUIRED_FOR_REFERRAL){
+        if(u.referred_by && newCount >= TASKS_REQUIRED_FOR_REFERRAL){
           const { data: ref } = await sb.from('app_users').select('*').eq('username', u.referred_by).maybeSingle();
           if(ref){
-            await sb.from('app_users').update({ balance: ref.balance + settings.referral_bonus, referral_count: ref.referral_count + 1 }).eq('username', ref.username);
-            await sb.from('app_users').update({ referral_credited: true }).eq('username', u.username);
-            showToast(`${sub.username} hit 3 tasks — ${ref.username} earned a referral bonus`);
-            if(ref.username === USERNAME) await refreshUserState();
+            const bothClean = !u.flagged && !ref.flagged;
+            const { error: rewardErr } = await sb.from('referral_rewards').insert({
+              id: uid(), referrer_username: ref.username, referred_username: u.username,
+              tasks_completed: newCount, reward_amount: settings.referral_bonus,
+              status: bothClean ? 'paid' : 'held_fraud_review', fraud_flag: !bothClean
+            });
+            // rewardErr fires on the unique(referred_username) constraint — meaning this referral was already rewarded, so skip.
+            if(!rewardErr){
+              if(bothClean){
+                await sb.from('app_users').update({ balance: ref.balance + settings.referral_bonus, referral_count: ref.referral_count + 1 }).eq('username', ref.username);
+                showToast(`Referral completed! 🎉 ${ref.username}'s reward has been credited instantly.`);
+                if(ref.username === USERNAME) await refreshUserState();
+              } else {
+                showToast(`Referral for ${u.username} flagged — reward held pending review.`);
+              }
+            }
           }
         }
       }
@@ -1046,6 +1101,50 @@ function bindRemoveChannelEvents(modal){
   });
 }
 
+function renderFlaggedRows(){
+  const flagged = allUsers.filter(u => u.flagged);
+  if(!flagged.length) return `<div class="empty">No flagged accounts</div>`;
+  return flagged.map(u=>`
+    <div class="approval-row">
+      <div class="approval-top">
+        <div>
+          <div class="approval-user">${u.username} <span style="color:var(--red); font-weight:600;">— ${u.flag_reason || 'Suspicious'}</span></div>
+          <div class="approval-task">IP: ${u.ip_address || 'unknown'} · Referred by: ${u.referred_by || '—'}</div>
+        </div>
+      </div>
+      <div class="approval-btns">
+        <button class="approve-btn" data-clear-flag="${u.username}">Clear flag & release rewards</button>
+      </div>
+    </div>`).join('');
+}
+
+function bindFlaggedEvents(modal){
+  modal.querySelectorAll('[data-clear-flag]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const uname = btn.dataset.clearFlag;
+      await sb.from('app_users').update({ flagged: false, flag_reason: null }).eq('username', uname);
+
+      const { data: heldRewards } = await sb.from('referral_rewards').select('*').eq('referred_username', uname).eq('status', 'held_fraud_review');
+      let touchedSelf = false;
+      for(const rw of (heldRewards || [])){
+        const { data: ref } = await sb.from('app_users').select('*').eq('username', rw.referrer_username).maybeSingle();
+        if(ref && !ref.flagged){
+          await sb.from('app_users').update({ balance: ref.balance + rw.reward_amount, referral_count: ref.referral_count + 1 }).eq('username', ref.username);
+          await sb.from('referral_rewards').update({ status: 'paid', fraud_flag: false }).eq('id', rw.id);
+          if(ref.username === USERNAME) touchedSelf = true;
+        }
+      }
+      showToast(`${uname} cleared — any held rewards released`);
+      await refreshUsers();
+      modal.querySelector('#flaggedBox').innerHTML = renderFlaggedRows();
+      modal.querySelector('#userListBox').innerHTML = renderUserRows();
+      bindFlaggedEvents(modal);
+      bindUserRowEvents(modal);
+      if(uname===USERNAME || touchedSelf){ await refreshUserState(); render(); }
+    });
+  });
+}
+
 function openAdminPanel(){
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
@@ -1113,6 +1212,9 @@ function openAdminPanel(){
         <button class="copy-btn" id="addAdminBtn" style="padding:12px 16px;">Add</button>
       </div>
 
+      <div class="sec-title" style="margin-top:24px;">🚩 Flagged — Shared IP</div>
+      <div id="flaggedBox">${renderFlaggedRows()}</div>
+
       <div class="sec-title" style="margin-top:24px;">Manage users</div>
       <div id="userListBox">${renderUserRows()}</div>
 
@@ -1125,6 +1227,7 @@ function openAdminPanel(){
   bindRemoveTaskEvents(modal);
   bindAdminWithdrawalEvents(modal);
   bindRemoveChannelEvents(modal);
+  bindFlaggedEvents(modal);
   refreshAdminWithdrawalBox(modal);
 
   modal.querySelector('#balAddBtn').addEventListener('click', ()=> adjustBalance(modal, 'add'));
